@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>将棋ゲーム</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>将棋</h1>
+        <div class="game-info">
+            <div class="turn-indicator">
+                <span id="currentTurn">先手の番</span>
+            </div>
+            <div class="game-mode">
+                <label>プレイモード:</label>
+                <select id="gameMode">
+                    <option value="human-vs-human">人間 vs 人間</option>
+                    <option value="human-vs-ai">人間 vs AI</option>
+                    <option value="ai-vs-ai">AI vs AI</option>
+                </select>
+            </div>
+            <div class="ai-level">
+                <label>AI強さ:</label>
+                <select id="aiLevel">
+                    <option value="beginner">初級</option>
+                    <option value="intermediate" selected>中級</option>
+                    <option value="advanced">上級</option>
+                </select>
+            </div>
+            <button id="resetBtn">リセット</button>
+        </div>
+        
+        <div class="game-board-container">
+            <!-- 後手の持ち駒 -->
+            <div class="captured-pieces captured-left" id="capturedTop">
+                <div class="captured-label">後手の持ち駒</div>
+                <div class="captured-list" id="capturedTopList"></div>
+            </div>
+            
+            <!-- 将棋盤 -->
+            <div class="board-wrapper">
+                <div class="board" id="board"></div>
+            </div>
+            
+            <!-- 先手の持ち駒 -->
+            <div class="captured-pieces captured-right" id="capturedBottom">
+                <div class="captured-label">先手の持ち駒</div>
+                <div class="captured-list" id="capturedBottomList"></div>
+            </div>
+        </div>
+        
+        <!-- 棋譜コントロール -->
+        <div class="move-history-controls">
+            <button id="prevMoveBtn" disabled>← 一手戻る</button>
+            <button id="nextMoveBtn" disabled>一手進む →</button>
+            <button id="firstMoveBtn" disabled>最初へ</button>
+            <button id="lastMoveBtn" disabled>最後へ</button>
+            <span id="moveCounter">手数: 0</span>
+            <div class="replay-mode-buttons">
+                <button id="newGameBtn" class="replay-btn new-game-btn">新しいゲーム</button>
+                <button id="exitGameBtn" class="replay-btn exit-game-btn">終了</button>
+            </div>
+        </div>
+        
+        <!-- 棋譜表示 -->
+        <div class="move-history-panel">
+            <h3>棋譜</h3>
+            <div id="moveHistoryList" class="move-history-list"></div>
+        </div>
+        
+        <div class="instructions">
+            <p id="instructionText">駒をクリックして選択し、移動先をクリックして移動します</p>
+            <div id="aiThinking" class="ai-thinking hidden">AIが思考中...</div>
+        </div>
+        
+        <!-- 成り選択モーダル -->
+        <div id="promoteModal" class="promote-modal hidden">
+            <div class="promote-content">
+                <h2>成りますか？</h2>
+                <p id="promotePieceName"></p>
+                <div class="promote-buttons">
+                    <button id="promoteYesBtn" class="promote-btn promote-yes">成る</button>
+                    <button id="promoteNoBtn" class="promote-btn promote-no">成らない</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>
