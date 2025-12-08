@@ -121,8 +121,20 @@ export class PieceMoves {
         for (let i = 1; i < BOARD_SIZE; i++) {
             const newRow = row + (forward * i);
             if (!this.isValidPosition(newRow, col)) break;
+            
+            const target = this.board[newRow][col];
+            if (target) {
+                // 自駒ならそこは進めずブロック
+                const isSameSide = (this.isSente(piece) && this.isSente(target)) ||
+                                   (this.isGote(piece) && this.isGote(target));
+                if (!isSameSide) {
+                    // 相手駒なら取れるマスとして追加してブロック
+                    moves.push([newRow, col]);
+                }
+                break;
+            }
+            
             moves.push([newRow, col]);
-            if (this.board[newRow][col]) break; // 駒に当たったら止まる
         }
         return moves;
     }
