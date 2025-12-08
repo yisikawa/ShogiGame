@@ -610,6 +610,11 @@ export class ShogiGame {
             
             // Ollamaの場合は非同期処理
             if (this.ai.level === AI_LEVEL.OLLAMA) {
+                console.info('[Game] Ollama async move start', {
+                    turn: this.currentTurn,
+                    endpoint: this.ai.ollamaEndpoint,
+                    model: this.ai.ollamaModel
+                });
                 this.ai.getBestMoveAsync(this, this.currentTurn).then(move => {
                     if (this.gameOver || this.isReplaying) {
                         this.hideAIThinking();

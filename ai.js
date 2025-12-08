@@ -6,7 +6,8 @@ import {
     MINIMAX_DEPTH,
     MINIMAX_MOVE_LIMIT,
     ENEMY_TERRITORY_SENTE,
-    ENEMY_TERRITORY_GOTE
+    ENEMY_TERRITORY_GOTE,
+    OLLAMA_CONFIG
 } from './constants.js';
 
 /**
@@ -16,6 +17,10 @@ export class ShogiAI {
     constructor(level = AI_LEVEL.INTERMEDIATE, ollamaEndpoint = null, ollamaModel = null) {
         this.level = level;
         this.pieceValues = PIECE_VALUES;
+        // Ollama設定（UIがなくても動くようにデフォルトを使用）
+        this.ollamaEndpoint = (ollamaEndpoint ?? OLLAMA_CONFIG.ENDPOINT).replace(/\/$/, '');
+        this.ollamaModel = ollamaModel ?? OLLAMA_CONFIG.MODEL;
+        this.timeoutMs = OLLAMA_CONFIG.TIMEOUT ?? 30000;
     }
 
     /**
@@ -309,6 +314,12 @@ export class ShogiAI {
         if (allMoves.length === 0) return null;
         
         try {
+            console.info('[Ollama] fetch start', {
+                endpoint: this.ollamaEndpoint,
+                model: this.ollamaModel,
+                turn,
+                moves: allMoves.length
+            });
             const move = await this.getOllamaMove(allMoves, game, turn);
             return move || this.getIntermediateMove(allMoves, game, turn);
         } catch (error) {
@@ -347,8 +358,9 @@ ${movesText}
 
 上記の合法手の中から、最善と思われる手の番号（1, 2, 3...）だけを回答してください。番号以外は書かないでください。`;
 
-        const endpoint = this.ollamaEndpoint.replace(/\/$/, '');
-        const response = await fetch(`${endpoint}/api/generate`, {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+        const response = await fetch(`${this.ollamaEndpoint}/api/generate`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -358,7 +370,8 @@ ${movesText}
                 prompt: prompt,
                 stream: false,
             }),
-        });
+            signal: controller.signal
+        }).finally(() => clearTimeout(timeoutId));
 
         if (!response.ok) {
             throw new Error(`Ollama API error: ${response.status}`);
