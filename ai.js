@@ -13,7 +13,7 @@ import {
  * 将棋AIプレイヤークラス
  */
 export class ShogiAI {
-    constructor(level = AI_LEVEL.INTERMEDIATE) {
+    constructor(level = AI_LEVEL.INTERMEDIATE, ollamaEndpoint = null, ollamaModel = null) {
         this.level = level;
         this.pieceValues = PIECE_VALUES;
     }
@@ -32,6 +32,10 @@ export class ShogiAI {
                 return this.getIntermediateMove(allMoves, game, turn);
             case AI_LEVEL.ADVANCED:
                 return this.getAdvancedMove(allMoves, game, turn);
+            case AI_LEVEL.OLLAMA:
+                // Ollamaは非同期なので、ここではフォールバック
+                // 実際の呼び出しはgetBestMoveAsync()を使用
+                return this.getIntermediateMove(allMoves, game, turn);
             default:
                 return this.getIntermediateMove(allMoves, game, turn);
         }
@@ -291,5 +295,169 @@ export class ShogiAI {
                 game.capturedPieces[turn].splice(index, 1);
             }
         }
+    }
+
+    /**
+     * 非同期で最善手を取得（Ollama用）
+     */
+    async getBestMoveAsync(game, turn) {
+        if (this.level !== AI_LEVEL.OLLAMA) {
+            return Promise.resolve(this.getBestMove(game, turn));
+        }
+        
+        const allMoves = game.getAllPossibleMoves(turn);
+        if (allMoves.length === 0) return null;
+        
+        try {
+            const move = await this.getOllamaMove(allMoves, game, turn);
+            return move || this.getIntermediateMove(allMoves, game, turn);
+        } catch (error) {
+            console.error('Ollama呼び出しエラー:', error);
+            // エラー時は中級AIにフォールバック
+            return this.getIntermediateMove(allMoves, game, turn);
+        }
+    }
+
+    /**
+     * Ollamaを使用して手を取得
+     */
+    async getOllamaMove(allMoves, game, turn) {
+        // 局面をテキスト形式に変換
+        const positionText = this.boardToText(game, turn);
+        
+        // 合法手のリストをテキスト形式に変換
+        const movesText = allMoves.map((move, index) => {
+            if (move.type === 'move') {
+                const fromPos = this.positionToNotation(move.fromRow, move.fromCol);
+                const toPos = this.positionToNotation(move.toRow, move.toCol);
+                return `${index + 1}. ${fromPos}→${toPos}`;
+            } else {
+                const toPos = this.positionToNotation(move.toRow, move.toCol);
+                const pieceName = this.getPieceName(move.piece);
+                return `${index + 1}. ${pieceName}打${toPos}`;
+            }
+        }).join('\n');
+
+        const prompt = `あなたは将棋のAIです。以下の局面で最善手を選んでください。
+
+${positionText}
+
+合法手:
+${movesText}
+
+上記の合法手の中から、最善と思われる手の番号（1, 2, 3...）だけを回答してください。番号以外は書かないでください。`;
+
+        const endpoint = this.ollamaEndpoint.replace(/\/$/, '');
+        const response = await fetch(`${endpoint}/api/generate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: this.ollamaModel,
+                prompt: prompt,
+                stream: false,
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`Ollama API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const answer = data.response.trim();
+        
+        // 回答から番号を抽出
+        const match = answer.match(/\d+/);
+        if (match) {
+            const moveIndex = parseInt(match[0]) - 1;
+            if (moveIndex >= 0 && moveIndex < allMoves.length) {
+                return allMoves[moveIndex];
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * 盤面をテキスト形式に変換
+     */
+    boardToText(game, turn) {
+        const playerName = turn === 'sente' ? '先手' : '後手';
+        let text = `${playerName}の番\n\n`;
+        text += '  ９ ８ ７ ６ ５ ４ ３ ２ １\n';
+        
+        for (let row = 0; row < 9; row++) {
+            text += `${9 - row} `;
+            for (let col = 8; col >= 0; col--) {
+                const piece = game.board[row][col];
+                if (piece) {
+                    const pieceName = this.getPieceName(piece);
+                    text += pieceName;
+                } else {
+                    text += '・';
+                }
+            }
+            text += ` ${row + 1}\n`;
+        }
+        
+        text += '\n先手の持ち駒: ';
+        const senteCaptured = this.countPieces(game.capturedPieces.sente);
+        text += Object.keys(senteCaptured).map(p => {
+            const name = this.getPieceName(p);
+            return senteCaptured[p] > 1 ? `${name}×${senteCaptured[p]}` : name;
+        }).join(' ') || 'なし';
+        
+        text += '\n後手の持ち駒: ';
+        const goteCaptured = this.countPieces(game.capturedPieces.gote);
+        text += Object.keys(goteCaptured).map(p => {
+            const name = this.getPieceName(p);
+            return goteCaptured[p] > 1 ? `${name}×${goteCaptured[p]}` : name;
+        }).join(' ') || 'なし';
+        
+        return text;
+    }
+
+    /**
+     * 位置を表記に変換
+     */
+    positionToNotation(row, col) {
+        const colNames = ['９', '８', '７', '６', '５', '４', '３', '２', '１'];
+        const rowNames = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
+        return colNames[col] + rowNames[row];
+    }
+
+    /**
+     * 駒の表示名を取得
+     */
+    getPieceName(piece) {
+        const PIECE_NAMES = {
+            'K': '王', 'k': '王',
+            'G': '金', 'g': '金',
+            'S': '銀', 's': '銀',
+            'N': '桂', 'n': '桂',
+            'L': '香', 'l': '香',
+            'B': '角', 'b': '角',
+            'R': '飛', 'r': '飛',
+            'P': '歩', 'p': '歩',
+            '+B': '馬', '+b': '馬',
+            '+R': '龍', '+r': '龍',
+            '+S': '全', '+s': '全',
+            '+N': '圭', '+n': '圭',
+            '+L': '杏', '+l': '杏',
+            '+P': 'と', '+p': 'と'
+        };
+        return PIECE_NAMES[piece] || piece;
+    }
+
+    /**
+     * 持ち駒を集計
+     */
+    countPieces(pieces) {
+        const counts = {};
+        pieces.forEach(piece => {
+            counts[piece] = (counts[piece] || 0) + 1;
+        });
+        return counts;
     }
 }

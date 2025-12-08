@@ -38,6 +38,8 @@ export class ShogiGame {
         this.moveHistory = [];
         this.currentMoveIndex = -1;
         this.isReplaying = false;
+        this.positionHistory = []; // 局面履歴（千日手判定用）
+        this.checkHistory = []; // 王手履歴（連続王手の千日手判定用）
         
         // 駒の移動ロジックを初期化
         this.pieceMoves = new PieceMoves(
@@ -216,8 +218,14 @@ export class ShogiGame {
         this.switchTurn();
         this.updateUI();
         
+        // 局面を記録（千日手判定用）
+        if (!this.isReplaying) {
+            this.recordPosition();
+        }
+        
         // ゲーム終了チェックとAIの手
         if (!this.gameOver) {
+            this.checkRepetition(); // 千日手チェック
             this.checkGameEnd();
             this.checkAndMakeAIMove();
         }
@@ -317,8 +325,14 @@ export class ShogiGame {
         this.switchTurn();
         this.updateUI();
         
+        // 局面を記録（千日手判定用）
+        if (!this.isReplaying) {
+            this.recordPosition();
+        }
+        
         // ゲーム終了チェックとAIの手
         if (!this.gameOver) {
+            this.checkRepetition(); // 千日手チェック
             this.checkGameEnd();
             this.checkAndMakeAIMove();
         }
@@ -593,25 +607,50 @@ export class ShogiGame {
     checkAndMakeAIMove() {
         if (this.isAITurn() && !this.gameOver && !this.isReplaying) {
             this.showAIThinking();
-            const thinkingTime = AI_THINKING_TIME.MIN + Math.random() * (AI_THINKING_TIME.MAX - AI_THINKING_TIME.MIN);
             
-            setTimeout(() => {
-                if (this.gameOver || this.isReplaying) {
-                    this.hideAIThinking();
-                    return;
-                }
-                
-                const move = this.ai.getBestMove(this, this.currentTurn);
-                if (move) {
-                    if (move.type === 'move') {
-                        this.movePiece(move.fromRow, move.fromCol, move.toRow, move.toCol);
-                    } else if (move.type === 'drop') {
-                        this.dropPiece(move.piece, move.toRow, move.toCol);
+            // Ollamaの場合は非同期処理
+            if (this.ai.level === AI_LEVEL.OLLAMA) {
+                this.ai.getBestMoveAsync(this, this.currentTurn).then(move => {
+                    if (this.gameOver || this.isReplaying) {
+                        this.hideAIThinking();
+                        return;
                     }
-                } else {
+                    
+                    if (move) {
+                        if (move.type === 'move') {
+                            this.movePiece(move.fromRow, move.fromCol, move.toRow, move.toCol);
+                        } else if (move.type === 'drop') {
+                            this.dropPiece(move.piece, move.toRow, move.toCol);
+                        }
+                    } else {
+                        this.hideAIThinking();
+                    }
+                }).catch(error => {
+                    console.error('AI手取得エラー:', error);
                     this.hideAIThinking();
-                }
-            }, thinkingTime);
+                });
+            } else {
+                // 通常のAIは従来通り
+                const thinkingTime = AI_THINKING_TIME.MIN + Math.random() * (AI_THINKING_TIME.MAX - AI_THINKING_TIME.MIN);
+                
+                setTimeout(() => {
+                    if (this.gameOver || this.isReplaying) {
+                        this.hideAIThinking();
+                        return;
+                    }
+                    
+                    const move = this.ai.getBestMove(this, this.currentTurn);
+                    if (move) {
+                        if (move.type === 'move') {
+                            this.movePiece(move.fromRow, move.fromCol, move.toRow, move.toCol);
+                        } else if (move.type === 'drop') {
+                            this.dropPiece(move.piece, move.toRow, move.toCol);
+                        }
+                    } else {
+                        this.hideAIThinking();
+                    }
+                }, thinkingTime);
+            }
         }
     }
 
@@ -721,6 +760,143 @@ export class ShogiGame {
             this.showReplayMode();
             return;
         }
+    }
+
+    /**
+     * 局面を文字列化（千日手判定用）
+     */
+    getPositionKey() {
+        // 盤面を文字列化
+        let boardStr = '';
+        for (let row = 0; row < BOARD_SIZE; row++) {
+            for (let col = 0; col < BOARD_SIZE; col++) {
+                boardStr += (this.board[row][col] || '.');
+            }
+        }
+        
+        // 持ち駒をソートして文字列化
+        const senteCaptured = [...this.capturedPieces.sente].sort().join('');
+        const goteCaptured = [...this.capturedPieces.gote].sort().join('');
+        
+        // 手番を含めた局面キー
+        return `${boardStr}|${senteCaptured}|${goteCaptured}|${this.currentTurn}`;
+    }
+
+    /**
+     * 王手判定
+     */
+    isInCheck(player) {
+        const kingPiece = player === PLAYER.SENTE ? 'K' : 'k';
+        let kingRow = -1;
+        let kingCol = -1;
+        
+        // 王の位置を探す
+        for (let row = 0; row < BOARD_SIZE; row++) {
+            for (let col = 0; col < BOARD_SIZE; col++) {
+                const piece = this.board[row][col];
+                if (piece && piece.replace('+', '') === kingPiece) {
+                    kingRow = row;
+                    kingCol = col;
+                    break;
+                }
+            }
+            if (kingRow !== -1) break;
+        }
+        
+        if (kingRow === -1) return false;
+        
+        // 相手の駒が王を攻撃できるかチェック
+        const opponent = player === PLAYER.SENTE ? PLAYER.GOTE : PLAYER.SENTE;
+        const allOpponentMoves = this.getAllPossibleMoves(opponent);
+        
+        return allOpponentMoves.some(move => {
+            if (move.type === 'move') {
+                return move.toRow === kingRow && move.toCol === kingCol;
+            }
+            return false;
+        });
+    }
+
+    /**
+     * 局面を記録
+     */
+    recordPosition() {
+        const positionKey = this.getPositionKey();
+        // 手を打った側（前の手番）が相手に王手をかけているかチェック
+        const previousTurn = this.currentTurn === PLAYER.SENTE ? PLAYER.GOTE : PLAYER.SENTE;
+        const isGivingCheck = this.isInCheck(this.currentTurn); // 現在の手番のプレイヤーが王手を受けている = 前の手番のプレイヤーが王手をかけている
+        
+        this.positionHistory.push({
+            key: positionKey,
+            turn: this.currentTurn,
+            isCheck: isGivingCheck
+        });
+        
+        // 王手の履歴も記録（連続王手の千日手判定用）
+        // 手を打った側（previousTurn）が相手に王手をかけていたかどうか
+        this.checkHistory.push(isGivingCheck);
+    }
+
+    /**
+     * 千日手判定
+     */
+    checkRepetition() {
+        if (this.positionHistory.length < 4) return;
+        
+        // 最後の4局面をチェック
+        const recentPositions = this.positionHistory.slice(-4);
+        const firstKey = recentPositions[0].key;
+        
+        // 同じ局面が4回出現しているかチェック
+        const allSame = recentPositions.every(pos => pos.key === firstKey);
+        
+        if (allSame) {
+            // 連続王手の千日手かチェック
+            const recentChecks = this.checkHistory.slice(-4);
+            const isContinuousCheck = recentChecks.every(check => check === true);
+            
+            if (isContinuousCheck) {
+                // 連続王手の千日手：王手をかけている側が負け
+                // 最後の手を打った側が王手をかけている
+                const lastTurn = this.currentTurn === PLAYER.SENTE ? PLAYER.GOTE : PLAYER.SENTE;
+                this.gameOver = true;
+                this.winner = this.currentTurn; // 王手をかけられていた側が勝ち
+                this.showRepetitionMessage('連続王手の千日手', lastTurn);
+                this.showReplayMode();
+            } else {
+                // 通常の千日手：引き分け
+                this.gameOver = true;
+                this.winner = null;
+                this.showRepetitionMessage('千日手', null);
+                this.showReplayMode();
+            }
+        }
+    }
+
+    /**
+     * 千日手メッセージを表示
+     */
+    showRepetitionMessage(type, loser) {
+        const controls = document.querySelector('.move-history-controls');
+        if (!controls) return;
+        
+        let message = '';
+        if (type === '連続王手の千日手') {
+            const loserName = loser === PLAYER.SENTE ? '先手' : '後手';
+            message = `⚠️ ${type}：${loserName}の負け`;
+        } else {
+            message = `⚠️ ${type}：引き分け`;
+        }
+        
+        let messageElement = document.getElementById('gameEndMessage');
+        if (!messageElement) {
+            messageElement = document.createElement('div');
+            messageElement.id = 'gameEndMessage';
+            messageElement.className = 'game-end-message';
+            controls.insertBefore(messageElement, controls.firstChild);
+        }
+        messageElement.textContent = message;
+        messageElement.style.color = '#e74c3c';
     }
 
     /**
@@ -834,6 +1010,7 @@ export class ShogiGame {
         this.currentTurn = PLAYER.SENTE;
         this.gameOver = false;
         this.winner = null;
+        // 局面履歴は保持（千日手判定のため）
         
         // 指定された手まで再生
         for (let i = 0; i <= targetIndex && i < this.moveHistory.length; i++) {
@@ -1002,6 +1179,8 @@ export class ShogiGame {
         this.moveHistory = [];
         this.currentMoveIndex = -1;
         this.isReplaying = false;
+        this.positionHistory = [];
+        this.checkHistory = [];
         
         // AIレベルを更新
         const aiLevelSelect = document.getElementById('aiLevel');

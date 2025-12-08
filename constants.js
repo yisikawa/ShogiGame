@@ -21,7 +21,15 @@ export const GAME_MODE = {
 export const AI_LEVEL = {
     BEGINNER: 'beginner',
     INTERMEDIATE: 'intermediate',
-    ADVANCED: 'advanced'
+    ADVANCED: 'advanced',
+    OLLAMA: 'ollama' // Ollama LLMを使用
+};
+
+// Ollama設定
+export const OLLAMA_CONFIG = {
+    ENDPOINT: 'http://localhost:11434', // Ollama APIエンドポイント
+    MODEL: 'gemma3:1b', // デフォルトモデル
+    TIMEOUT: 30000 // タイムアウト（ミリ秒）
 };
 
 // 駒の種類
