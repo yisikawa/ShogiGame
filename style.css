@@ -243,34 +243,6 @@ h1 {
     transition: border-color 0.3s;
 }
 
-.ollama-config {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 10px;
-    padding: 10px;
-    background: #f0f8ff;
-    border-radius: 5px;
-    border: 1px solid #b0d4f1;
-}
-
-.ollama-config label {
-    font-weight: bold;
-    color: #333;
-    font-size: 0.9em;
-}
-
-.ollama-config input {
-    padding: 6px 10px;
-    border: 2px solid #ddd;
-    border-radius: 5px;
-    font-size: 0.9em;
-}
-
-.ollama-config input:hover {
-    border-color: #667eea;
-}
-
 .ai-thinking {
     text-align: center;
     margin-top: 10px;
