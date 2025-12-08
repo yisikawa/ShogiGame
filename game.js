@@ -45,6 +45,7 @@ class ShogiGame {
         this.renderBoard();
         this.updateTurnIndicator();
         this.updateCapturedPieces();
+        this.updateInstructionText();
         this.setupEventListeners();
     }
 
@@ -401,6 +402,7 @@ class ShogiGame {
         this.updateTurnIndicator();
         this.updateCapturedPieces();
         this.updateMoveControls();
+        this.updateInstructionText();
         
         // ゲームが終了していない場合のみAIの手を打つ
         if (!this.gameOver) {
@@ -516,6 +518,7 @@ class ShogiGame {
         this.updateTurnIndicator();
         this.updateCapturedPieces();
         this.updateMoveControls();
+        this.updateInstructionText();
         
         // ゲームが終了していない場合のみAIの手を打つ
         if (!this.gameOver) {
@@ -586,14 +589,17 @@ class ShogiGame {
                     this.dropPiece(this.selectedCapturedPiece.piece, row, col);
                     this.selectedCapturedPiece = null;
                     this.updateCapturedPieces(); // UIを更新
+                    this.updateInstructionText(); // インストラクションを更新
                 } else {
                     // 打てないマス（二歩など）
-                    alert('そのマスには打てません（二歩などの禁じ手）');
+                    const pieceName = this.getPieceName(this.selectedCapturedPiece.piece);
+                    alert(`そのマスには「${pieceName}」を打てません（二歩などの禁じ手）`);
                 }
             } else {
-                // 既に駒があるマス
+                // 既に駒があるマス - 持ち駒の選択を解除して、その駒を選択
                 this.selectedCapturedPiece = null;
                 this.updateCapturedPieces();
+                this.updateInstructionText();
                 // その駒を選択
                 if ((this.currentTurn === 'sente' && this.isSente(piece)) ||
                     (this.currentTurn === 'gote' && this.isGote(piece))) {
@@ -647,16 +653,45 @@ class ShogiGame {
                 if (moveCell) moveCell.classList.add('possible-move');
             });
         }
+        this.updateInstructionText();
     }
 
     updateTurnIndicator() {
         const turnElement = document.getElementById('currentTurn');
         turnElement.textContent = this.currentTurn === 'sente' ? '先手の番' : '後手の番';
+        this.updateInstructionText();
+    }
+    
+    updateInstructionText() {
+        const instructionElement = document.getElementById('instructionText');
+        if (!instructionElement) return;
+        
+        if (this.gameOver) {
+            instructionElement.textContent = 'ゲーム終了';
+            return;
+        }
+        
+        if (this.selectedCapturedPiece) {
+            const pieceName = this.getPieceName(this.selectedCapturedPiece.piece);
+            instructionElement.textContent = `持ち駒「${pieceName}」を選択中。打ちたいマスをクリックしてください`;
+            instructionElement.style.color = '#667eea';
+            instructionElement.style.fontWeight = 'bold';
+        } else if (this.selectedCell) {
+            instructionElement.textContent = '移動先をクリックしてください';
+            instructionElement.style.color = '#667eea';
+            instructionElement.style.fontWeight = 'bold';
+        } else {
+            instructionElement.textContent = '駒をクリックして選択するか、持ち駒をクリックして打ち込みます';
+            instructionElement.style.color = '#666';
+            instructionElement.style.fontWeight = 'normal';
+        }
     }
 
     updateCapturedPieces() {
         const topList = document.getElementById('capturedTopList');
         const bottomList = document.getElementById('capturedBottomList');
+        const topContainer = document.getElementById('capturedTop');
+        const bottomContainer = document.getElementById('capturedBottom');
         
         topList.innerHTML = '';
         bottomList.innerHTML = '';
@@ -717,10 +752,30 @@ class ShogiGame {
             pieceElement.addEventListener('click', () => this.handleCapturedPieceClick(piece, 'sente'));
             bottomList.appendChild(pieceElement);
         });
+        
+        // 持ち駒がある場合にコンテナにクラスを追加
+        if (topContainer) {
+            if (Object.keys(gotePieces).length > 0) {
+                topContainer.classList.add('has-pieces');
+            } else {
+                topContainer.classList.remove('has-pieces');
+            }
+        }
+        
+        if (bottomContainer) {
+            if (Object.keys(sentePieces).length > 0) {
+                bottomContainer.classList.add('has-pieces');
+            } else {
+                bottomContainer.classList.remove('has-pieces');
+            }
+        }
     }
 
     handleCapturedPieceClick(piece, player) {
-        if (player !== this.currentTurn) return;
+        if (player !== this.currentTurn) {
+            // 自分のターンでない持ち駒をクリックした場合のメッセージ
+            return;
+        }
         if (this.gameOver) return;
         
         // 持ち駒を選択状態にする
@@ -729,14 +784,16 @@ class ShogiGame {
             this.selectedCapturedPiece.player === player) {
             // 既に選択されている場合は選択解除
             this.selectedCapturedPiece = null;
+            this.renderBoard();
         } else {
             // 新しい持ち駒を選択
             this.selectedCapturedPiece = { piece: piece, player: player };
             this.selectedCell = null; // 盤上の選択を解除
+            this.highlightDropPositions(); // 打てる位置をハイライト
         }
         
         this.updateCapturedPieces(); // UIを更新
-        this.highlightDropPositions(); // 打てる位置をハイライト
+        this.updateInstructionText(); // インストラクションを更新
     }
     
     canDropPiece(piece, row, col) {
@@ -1148,6 +1205,7 @@ class ShogiGame {
         this.updateCapturedPieces();
         this.updateMoveControls();
         this.updateMoveHistoryDisplay();
+        this.updateInstructionText();
         this.hideAIThinking();
         this.hidePromoteModal();
         this.exitReplayMode();
