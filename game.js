@@ -1,46 +1,66 @@
 // 将棋ゲームのメインロジック
 
-class ShogiGame {
+import {
+    BOARD_SIZE,
+    INITIAL_BOARD,
+    PIECE_NAMES,
+    PLAYER,
+    GAME_MODE,
+    AI_LEVEL,
+    ENEMY_TERRITORY_SENTE,
+    ENEMY_TERRITORY_GOTE,
+    PIECE_TYPE,
+    AI_THINKING_TIME,
+    UI_UPDATE_DELAY
+} from './constants.js';
+import { PieceMoves } from './pieceMoves.js';
+import { ShogiAI } from './ai.js';
+
+/**
+ * 将棋ゲームのメインクラス
+ */
+export class ShogiGame {
     constructor() {
         this.board = this.initializeBoard();
-        this.currentTurn = 'sente'; // 'sente' (先手) or 'gote' (後手)
+        this.currentTurn = PLAYER.SENTE;
         this.selectedCell = null;
-        this.selectedCapturedPiece = null; // 選択された持ち駒 {piece: 'p', player: 'sente'}
+        this.selectedCapturedPiece = null;
         this.capturedPieces = {
             sente: [],
             gote: []
         };
-        this.gameMode = 'human-vs-human'; // 'human-vs-human', 'human-vs-ai', 'ai-vs-ai'
-        this.aiLevel = 'intermediate'; // 'beginner', 'intermediate', 'advanced'
+        this.gameMode = GAME_MODE.HUMAN_VS_HUMAN;
+        this.aiLevel = AI_LEVEL.INTERMEDIATE;
         this.ai = new ShogiAI(this.aiLevel);
         this.gameOver = false;
         this.winner = null;
-        this.pendingPromotion = null; // {fromRow, fromCol, toRow, toCol, piece}
-        this.moveHistory = []; // 棋譜（手の履歴）
-        this.currentMoveIndex = -1; // 現在の手のインデックス（再生用）
-        this.isReplaying = false; // 再生中かどうか
+        this.pendingPromotion = null;
+        this.moveHistory = [];
+        this.currentMoveIndex = -1;
+        this.isReplaying = false;
+        
+        // 駒の移動ロジックを初期化
+        this.pieceMoves = new PieceMoves(
+            this.board,
+            (row, col) => this.isValidPosition(row, col),
+            (piece) => this.isSente(piece),
+            (piece) => this.isGote(piece)
+        );
+        
         this.init();
     }
 
+    /**
+     * 盤面を初期化
+     */
     initializeBoard() {
-        // 9x9の将棋盤を初期化
-        const board = Array(9).fill(null).map(() => Array(9).fill(null));
-        
-        // 後手（上側）の初期配置
-        board[0] = ['l', 'n', 's', 'g', 'k', 'g', 's', 'n', 'l'];
-        board[1][1] = 'r';
-        board[1][7] = 'b';
-        board[2] = ['p', 'p', 'p', 'p', 'p', 'p', 'p', 'p', 'p'];
-        
-        // 先手（下側）の初期配置
-        board[6] = ['P', 'P', 'P', 'P', 'P', 'P', 'P', 'P', 'P'];
-        board[7][1] = 'B';
-        board[7][7] = 'R';
-        board[8] = ['L', 'N', 'S', 'G', 'K', 'G', 'S', 'N', 'L'];
-        
-        return board;
+        // 初期盤面をコピー
+        return INITIAL_BOARD.map(row => [...row]);
     }
 
+    /**
+     * 初期化処理
+     */
     init() {
         this.renderBoard();
         this.updateTurnIndicator();
@@ -48,283 +68,100 @@ class ShogiGame {
         this.setupEventListeners();
     }
 
+    /**
+     * イベントリスナーの設定
+     */
     setupEventListeners() {
-        document.getElementById('resetBtn').addEventListener('click', () => {
-            this.reset();
-        });
-        
-        document.getElementById('gameMode').addEventListener('change', (e) => {
-            this.gameMode = e.target.value;
-            this.reset();
-            // AI vs AIモードの場合は開始
-            if (this.gameMode === 'ai-vs-ai') {
-                // 少し遅延させてから開始（UI更新を待つ）
-                setTimeout(() => {
-                    this.checkAndMakeAIMove();
-                }, 100);
+        const handlers = {
+            'resetBtn': () => this.reset(),
+            'gameMode': (e) => {
+                this.gameMode = e.target.value;
+                this.reset();
+                if (this.gameMode === GAME_MODE.AI_VS_AI) {
+                    setTimeout(() => this.checkAndMakeAIMove(), UI_UPDATE_DELAY);
+                }
+            },
+            'aiLevel': (e) => {
+                this.aiLevel = e.target.value;
+                this.ai = new ShogiAI(this.aiLevel);
+            },
+            'newGameBtn': () => {
+                this.exitReplayMode();
+                this.reset();
+            },
+            'exitGameBtn': () => this.exitGame(),
+            'promoteYesBtn': () => this.handlePromotionChoice(true),
+            'promoteNoBtn': () => this.handlePromotionChoice(false),
+            'prevMoveBtn': () => this.goToPreviousMove(),
+            'nextMoveBtn': () => this.goToNextMove(),
+            'firstMoveBtn': () => this.goToFirstMove(),
+            'lastMoveBtn': () => this.goToLastMove()
+        };
+
+        Object.entries(handlers).forEach(([id, handler]) => {
+            const element = document.getElementById(id);
+            if (element) {
+                const eventType = id.includes('Btn') ? 'click' : 'change';
+                element.addEventListener(eventType, handler);
             }
         });
-        
-        document.getElementById('aiLevel').addEventListener('change', (e) => {
-            this.aiLevel = e.target.value;
-            this.ai = new ShogiAI(this.aiLevel);
-        });
-        
-        document.getElementById('newGameBtn').addEventListener('click', () => {
-            this.exitReplayMode();
-            this.reset();
-        });
-        
-        document.getElementById('exitGameBtn').addEventListener('click', () => {
-            this.exitGame();
-        });
-        
-        document.getElementById('promoteYesBtn').addEventListener('click', () => {
-            this.handlePromotionChoice(true);
-        });
-        
-        document.getElementById('promoteNoBtn').addEventListener('click', () => {
-            this.handlePromotionChoice(false);
-        });
-        
-        document.getElementById('prevMoveBtn').addEventListener('click', () => {
-            this.goToPreviousMove();
-        });
-        
-        document.getElementById('nextMoveBtn').addEventListener('click', () => {
-            this.goToNextMove();
-        });
-        
-        document.getElementById('firstMoveBtn').addEventListener('click', () => {
-            this.goToFirstMove();
-        });
-        
-        document.getElementById('lastMoveBtn').addEventListener('click', () => {
-            this.goToLastMove();
-        });
     }
 
+    /**
+     * 駒の表示名を取得
+     */
     getPieceName(piece) {
-        const pieceNames = {
-            'K': '王', 'k': '王',
-            'G': '金', 'g': '金',
-            'S': '銀', 's': '銀',
-            'N': '桂', 'n': '桂',
-            'L': '香', 'l': '香',
-            'B': '角', 'b': '角',
-            'R': '飛', 'r': '飛',
-            'P': '歩', 'p': '歩',
-            '+B': '馬', '+b': '馬',
-            '+R': '龍', '+r': '龍',
-            '+S': '全', '+s': '全',
-            '+N': '圭', '+n': '圭',
-            '+L': '杏', '+l': '杏',
-            '+P': 'と', '+p': 'と'
-        };
-        return pieceNames[piece] || '';
+        return PIECE_NAMES[piece] || '';
     }
 
+    /**
+     * 先手の駒かどうか
+     */
     isSente(piece) {
         return piece && piece === piece.toUpperCase();
     }
 
+    /**
+     * 後手の駒かどうか
+     */
     isGote(piece) {
         return piece && piece === piece.toLowerCase();
     }
 
+    /**
+     * 位置が有効かどうか
+     */
+    isValidPosition(row, col) {
+        return row >= 0 && row < BOARD_SIZE && col >= 0 && col < BOARD_SIZE;
+    }
+
+    /**
+     * 指定位置の駒の移動可能な位置を取得
+     */
     getPossibleMoves(row, col) {
         const piece = this.board[row][col];
         if (!piece) return [];
         
-        const isCurrentPlayer = (this.currentTurn === 'sente' && this.isSente(piece)) ||
-                               (this.currentTurn === 'gote' && this.isGote(piece));
+        const isCurrentPlayer = (this.currentTurn === PLAYER.SENTE && this.isSente(piece)) ||
+                               (this.currentTurn === PLAYER.GOTE && this.isGote(piece));
         if (!isCurrentPlayer) return [];
 
-        const moves = [];
-        const pieceType = piece.replace('+', '').toLowerCase();
+        // PieceMovesクラスを使用して移動可能な位置を取得
+        this.pieceMoves.board = this.board; // 最新の盤面を反映
+        const moves = this.pieceMoves.getMovesForPiece(row, col, piece);
 
-        switch (pieceType) {
-            case 'k': // 王
-                moves.push(...this.getKingMoves(row, col, piece));
-                break;
-            case 'g': // 金
-                moves.push(...this.getGoldMoves(row, col, piece));
-                break;
-            case 's': // 銀
-                moves.push(...this.getSilverMoves(row, col, piece));
-                break;
-            case 'n': // 桂
-                moves.push(...this.getKnightMoves(row, col, piece));
-                break;
-            case 'l': // 香
-                moves.push(...this.getLanceMoves(row, col, piece));
-                break;
-            case 'b': // 角
-                moves.push(...this.getBishopMoves(row, col, piece));
-                break;
-            case 'r': // 飛
-                moves.push(...this.getRookMoves(row, col, piece));
-                break;
-            case 'p': // 歩
-                moves.push(...this.getPawnMoves(row, col, piece));
-                break;
-        }
-
+        // 自分の駒を取らないようにフィルタリング
         return moves.filter(([r, c]) => {
-            // 自分の駒を取らない
             const target = this.board[r][c];
             if (!target) return true;
-            return (this.currentTurn === 'sente' && this.isGote(target)) ||
-                   (this.currentTurn === 'gote' && this.isSente(target));
+            return (this.currentTurn === PLAYER.SENTE && this.isGote(target)) ||
+                   (this.currentTurn === PLAYER.GOTE && this.isSente(target));
         });
     }
 
-    getKingMoves(row, col, piece) {
-        const moves = [];
-        const directions = [[-1,-1], [-1,0], [-1,1], [0,-1], [0,1], [1,-1], [1,0], [1,1]];
-        for (const [dr, dc] of directions) {
-            const newRow = row + dr;
-            const newCol = col + dc;
-            if (this.isValidPosition(newRow, newCol)) {
-                moves.push([newRow, newCol]);
-            }
-        }
-        return moves;
-    }
-
-    getGoldMoves(row, col, piece) {
-        const moves = [];
-        const isSente = this.isSente(piece);
-        const forward = isSente ? -1 : 1;
-        const directions = isSente 
-            ? [[-1,-1], [-1,0], [-1,1], [0,-1], [0,1], [1,0]]
-            : [[1,-1], [1,0], [1,1], [0,-1], [0,1], [-1,0]];
-        for (const [dr, dc] of directions) {
-            const newRow = row + dr;
-            const newCol = col + dc;
-            if (this.isValidPosition(newRow, newCol)) {
-                moves.push([newRow, newCol]);
-            }
-        }
-        return moves;
-    }
-
-    getSilverMoves(row, col, piece) {
-        const isSente = this.isSente(piece);
-        const isPromoted = piece.includes('+');
-        if (isPromoted) {
-            return this.getGoldMoves(row, col, piece);
-        }
-        const moves = [];
-        const forward = isSente ? -1 : 1;
-        const directions = [[forward,-1], [forward,0], [forward,1], [-forward,-1], [-forward,1]];
-        for (const [dr, dc] of directions) {
-            const newRow = row + dr;
-            const newCol = col + dc;
-            if (this.isValidPosition(newRow, newCol)) {
-                moves.push([newRow, newCol]);
-            }
-        }
-        return moves;
-    }
-
-    getKnightMoves(row, col, piece) {
-        const isSente = this.isSente(piece);
-        const isPromoted = piece.includes('+');
-        if (isPromoted) {
-            return this.getGoldMoves(row, col, piece);
-        }
-        const moves = [];
-        const forward = isSente ? -2 : 2;
-        const directions = [[forward,-1], [forward,1]];
-        for (const [dr, dc] of directions) {
-            const newRow = row + dr;
-            const newCol = col + dc;
-            if (this.isValidPosition(newRow, newCol)) {
-                moves.push([newRow, newCol]);
-            }
-        }
-        return moves;
-    }
-
-    getLanceMoves(row, col, piece) {
-        const isSente = this.isSente(piece);
-        const isPromoted = piece.includes('+');
-        if (isPromoted) {
-            return this.getGoldMoves(row, col, piece);
-        }
-        const moves = [];
-        const forward = isSente ? -1 : 1;
-        for (let i = 1; i < 9; i++) {
-            const newRow = row + (forward * i);
-            if (!this.isValidPosition(newRow, col)) break;
-            moves.push([newRow, col]);
-            if (this.board[newRow][col]) break; // 駒に当たったら止まる
-        }
-        return moves;
-    }
-
-    getBishopMoves(row, col, piece) {
-        const isPromoted = piece.includes('+');
-        const moves = [];
-        const directions = [[-1,-1], [-1,1], [1,-1], [1,1]];
-        for (const [dr, dc] of directions) {
-            for (let i = 1; i < 9; i++) {
-                const newRow = row + (dr * i);
-                const newCol = col + (dc * i);
-                if (!this.isValidPosition(newRow, newCol)) break;
-                moves.push([newRow, newCol]);
-                if (this.board[newRow][newCol]) break;
-            }
-        }
-        // 成り角（馬）は王の動きも追加
-        if (isPromoted) {
-            const kingMoves = this.getKingMoves(row, col, piece);
-            moves.push(...kingMoves);
-        }
-        return moves;
-    }
-
-    getRookMoves(row, col, piece) {
-        const isPromoted = piece.includes('+');
-        const moves = [];
-        const directions = [[-1,0], [1,0], [0,-1], [0,1]];
-        for (const [dr, dc] of directions) {
-            for (let i = 1; i < 9; i++) {
-                const newRow = row + (dr * i);
-                const newCol = col + (dc * i);
-                if (!this.isValidPosition(newRow, newCol)) break;
-                moves.push([newRow, newCol]);
-                if (this.board[newRow][newCol]) break;
-            }
-        }
-        // 成り飛（龍）は王の動きも追加
-        if (isPromoted) {
-            const kingMoves = this.getKingMoves(row, col, piece);
-            moves.push(...kingMoves);
-        }
-        return moves;
-    }
-
-    getPawnMoves(row, col, piece) {
-        const isSente = this.isSente(piece);
-        const isPromoted = piece.includes('+');
-        if (isPromoted) {
-            return this.getGoldMoves(row, col, piece);
-        }
-        const moves = [];
-        const forward = isSente ? -1 : 1;
-        const newRow = row + forward;
-        if (this.isValidPosition(newRow, col)) {
-            moves.push([newRow, col]);
-        }
-        return moves;
-    }
-
-    isValidPosition(row, col) {
-        return row >= 0 && row < 9 && col >= 0 && col < 9;
-    }
-
+    /**
+     * 駒を移動
+     */
     movePiece(fromRow, fromCol, toRow, toCol, promote = null) {
         const piece = this.board[fromRow][fromCol];
         const captured = this.board[toRow][toCol];
@@ -332,11 +169,7 @@ class ShogiGame {
         // 持ち駒に追加
         if (captured) {
             const capturedPiece = captured.replace('+', '').toLowerCase();
-            if (this.currentTurn === 'sente') {
-                this.capturedPieces.sente.push(capturedPiece);
-            } else {
-                this.capturedPieces.gote.push(capturedPiece);
-            }
+            this.capturedPieces[this.currentTurn].push(capturedPiece);
         }
         
         // 駒を移動
@@ -345,15 +178,13 @@ class ShogiGame {
         
         // 成りの判定
         const canPromote = this.canPromote(piece, fromRow, toRow);
-        if (canPromote && !piece.includes('+') && piece.toLowerCase() !== 'k' && piece.toLowerCase() !== 'g') {
-            // 人間のターンで、promoteがnullの場合は選択を待つ
+        if (canPromote && !piece.includes('+') && piece.toLowerCase() !== PIECE_TYPE.KING && piece.toLowerCase() !== PIECE_TYPE.GOLD) {
             if (!this.isAITurn() && promote === null) {
                 this.pendingPromotion = { fromRow, fromCol, toRow, toCol, piece, captured };
                 this.showPromoteModal(piece);
-                return; // 成り選択を待つ
+                return;
             }
             
-            // AIのターンまたは既に選択済みの場合
             if (promote === true || (this.isAITurn() && this.shouldAIPromote(piece, toRow))) {
                 this.board[toRow][toCol] = '+' + piece;
             }
@@ -361,17 +192,16 @@ class ShogiGame {
         
         // 王が取られたかチェック
         const capturedPiece = captured ? captured.replace('+', '').toLowerCase() : null;
-        if (capturedPiece === 'k') {
-            // 王が取られた
+        if (capturedPiece === PIECE_TYPE.KING) {
             this.gameOver = true;
-            this.winner = this.currentTurn; // 王を取った側が勝ち
+            this.winner = this.currentTurn;
             this.showReplayMode();
             return;
         }
         
-        // 棋譜に記録（再生中でない場合のみ）
+        // 棋譜に記録
         if (!this.isReplaying) {
-            const moveRecord = {
+            this.recordMove({
                 type: 'move',
                 fromRow,
                 fromCol,
@@ -379,125 +209,101 @@ class ShogiGame {
                 toCol,
                 piece: piece,
                 promoted: this.board[toRow][toCol].includes('+'),
-                captured: captured ? captured.replace('+', '') : null,
-                turn: this.currentTurn,
-                capturedPiecesBefore: {
-                    sente: [...this.capturedPieces.sente],
-                    gote: [...this.capturedPieces.gote]
-                }
-            };
-            // 現在の位置より後ろの手を削除（分岐を削除）
-            this.moveHistory = this.moveHistory.slice(0, this.currentMoveIndex + 1);
-            this.moveHistory.push(moveRecord);
-            this.currentMoveIndex = this.moveHistory.length - 1;
-            this.updateMoveHistoryDisplay();
+                captured: captured ? captured.replace('+', '') : null
+            });
         }
         
-        this.currentTurn = this.currentTurn === 'sente' ? 'gote' : 'sente';
-        this.selectedCell = null;
-        this.selectedCapturedPiece = null;
-        this.pendingPromotion = null;
-        this.renderBoard();
-        this.updateTurnIndicator();
-        this.updateCapturedPieces();
-        this.updateMoveControls();
+        this.switchTurn();
+        this.updateUI();
         
-        // ゲームが終了していない場合のみAIの手を打つ
+        // ゲーム終了チェックとAIの手
         if (!this.gameOver) {
-            // 王が盤上に存在するかチェック
-            if (!this.hasKing('sente')) {
-                this.gameOver = true;
-                this.winner = 'gote';
-                this.showReplayMode();
-                return;
-            }
-            if (!this.hasKing('gote')) {
-                this.gameOver = true;
-                this.winner = 'sente';
-                this.showReplayMode();
-                return;
-            }
-            
-            // AIのターンの場合、自動で手を打つ
+            this.checkGameEnd();
             this.checkAndMakeAIMove();
         }
     }
     
+    /**
+     * 成りが可能かどうか
+     */
     canPromote(piece, fromRow, toRow) {
         if (!piece || piece.includes('+')) return false;
-        if (piece.toLowerCase() === 'k' || piece.toLowerCase() === 'g') return false;
+        if (piece.toLowerCase() === PIECE_TYPE.KING || piece.toLowerCase() === PIECE_TYPE.GOLD) return false;
         
         const isSente = this.isSente(piece);
-        // 敵陣（先手は0-2行目、後手は6-8行目）に入った場合、または敵陣から出る場合
-        const inEnemyTerritory = (isSente && toRow < 3) || (!isSente && toRow > 5);
-        const fromEnemyTerritory = (isSente && fromRow < 3) || (!isSente && fromRow > 5);
+        const inEnemyTerritory = (isSente && toRow < ENEMY_TERRITORY_SENTE) || (!isSente && toRow > ENEMY_TERRITORY_GOTE);
+        const fromEnemyTerritory = (isSente && fromRow < ENEMY_TERRITORY_SENTE) || (!isSente && fromRow > ENEMY_TERRITORY_GOTE);
         
         return inEnemyTerritory || fromEnemyTerritory;
     }
     
+    /**
+     * AIが成るべきかどうか
+     */
     shouldAIPromote(piece, toRow) {
-        // AIの成り判定（基本的には成る）
         const pieceType = piece.toLowerCase();
-        // 王や金以外は基本的に成る
-        if (pieceType === 'k' || pieceType === 'g') return false;
-        return true;
+        return pieceType !== PIECE_TYPE.KING && pieceType !== PIECE_TYPE.GOLD;
     }
     
+    /**
+     * 成り選択モーダルを表示
+     */
     showPromoteModal(piece) {
         const modal = document.getElementById('promoteModal');
         const pieceName = document.getElementById('promotePieceName');
-        pieceName.textContent = `${this.getPieceName(piece)}を成りますか？`;
-        modal.classList.remove('hidden');
+        if (modal && pieceName) {
+            pieceName.textContent = `${this.getPieceName(piece)}を成りますか？`;
+            modal.classList.remove('hidden');
+        }
     }
     
+    /**
+     * 成り選択モーダルを非表示
+     */
     hidePromoteModal() {
         const modal = document.getElementById('promoteModal');
-        modal.classList.add('hidden');
+        if (modal) {
+            modal.classList.add('hidden');
+        }
     }
     
+    /**
+     * 成り選択を処理
+     */
     handlePromotionChoice(promote) {
         if (!this.pendingPromotion) return;
         
         const { fromRow, fromCol, toRow, toCol, piece } = this.pendingPromotion;
         this.hidePromoteModal();
-        
-        // 成り選択を反映して移動を完了
         this.movePiece(fromRow, fromCol, toRow, toCol, promote);
     }
 
+    /**
+     * 持ち駒を打つ
+     */
     dropPiece(piece, row, col) {
-        if (this.board[row][col]) return false; // 既に駒がある
+        if (this.board[row][col]) return false;
         
         const pieceType = piece.toLowerCase();
-        const droppedPiece = this.currentTurn === 'sente' ? pieceType.toUpperCase() : pieceType;
+        const droppedPiece = this.currentTurn === PLAYER.SENTE ? pieceType.toUpperCase() : pieceType;
         
-        // 二歩のチェック（簡易版）
-        if (pieceType === 'p') {
-            for (let r = 0; r < 9; r++) {
+        // 二歩のチェック
+        if (pieceType === PIECE_TYPE.PAWN) {
+            for (let r = 0; r < BOARD_SIZE; r++) {
                 if (this.board[r][col] === droppedPiece) {
-                    return false; // 同じ列に既に歩がある
+                    return false;
                 }
             }
         }
         
-        // 棋譜に記録（再生中でない場合のみ）
+        // 棋譜に記録
         if (!this.isReplaying) {
-            const moveRecord = {
+            this.recordMove({
                 type: 'drop',
                 piece: pieceType,
                 toRow: row,
-                toCol: col,
-                turn: this.currentTurn,
-                capturedPiecesBefore: {
-                    sente: [...this.capturedPieces.sente],
-                    gote: [...this.capturedPieces.gote]
-                }
-            };
-            // 現在の位置より後ろの手を削除（分岐を削除）
-            this.moveHistory = this.moveHistory.slice(0, this.currentMoveIndex + 1);
-            this.moveHistory.push(moveRecord);
-            this.currentMoveIndex = this.moveHistory.length - 1;
-            this.updateMoveHistoryDisplay();
+                toCol: col
+            });
         }
         
         this.board[row][col] = droppedPiece;
@@ -508,44 +314,29 @@ class ShogiGame {
             this.capturedPieces[this.currentTurn].splice(index, 1);
         }
         
-        // 王が取られたかチェック（打った駒が王を取った場合）
-        // この場合は通常発生しないが、念のためチェック
+        this.switchTurn();
+        this.updateUI();
         
-        this.currentTurn = this.currentTurn === 'sente' ? 'gote' : 'sente';
-        this.renderBoard();
-        this.updateTurnIndicator();
-        this.updateCapturedPieces();
-        this.updateMoveControls();
-        
-        // ゲームが終了していない場合のみAIの手を打つ
+        // ゲーム終了チェックとAIの手
         if (!this.gameOver) {
-            // 王が盤上に存在するかチェック
-            if (!this.hasKing('sente')) {
-                this.gameOver = true;
-                this.winner = 'gote';
-                this.showReplayMode();
-                return true;
-            }
-            if (!this.hasKing('gote')) {
-                this.gameOver = true;
-                this.winner = 'sente';
-                this.showReplayMode();
-                return true;
-            }
-            
-            // AIのターンの場合、自動で手を打つ
+            this.checkGameEnd();
             this.checkAndMakeAIMove();
         }
         
         return true;
     }
 
+    /**
+     * 盤面を描画
+     */
     renderBoard() {
         const boardElement = document.getElementById('board');
+        if (!boardElement) return;
+        
         boardElement.innerHTML = '';
         
-        for (let row = 0; row < 9; row++) {
-            for (let col = 0; col < 9; col++) {
+        for (let row = 0; row < BOARD_SIZE; row++) {
+            for (let col = 0; col < BOARD_SIZE; col++) {
                 const cell = document.createElement('div');
                 cell.className = 'cell';
                 cell.dataset.row = row;
@@ -565,38 +356,28 @@ class ShogiGame {
         }
     }
 
+    /**
+     * セルクリックを処理
+     */
     handleCellClick(row, col) {
-        // ゲームが終了している場合はクリックを無視
-        if (this.gameOver) {
-            return;
-        }
-        
-        // AIのターンまたはAI対AIモードの場合はクリックを無視
-        if (this.isAITurn()) {
-            return;
-        }
+        if (this.gameOver || this.isAITurn()) return;
         
         const piece = this.board[row][col];
         
         // 持ち駒が選択されている場合
         if (this.selectedCapturedPiece) {
-            // 空いているマスに打つ
             if (!piece) {
                 if (this.canDropPiece(this.selectedCapturedPiece.piece, row, col)) {
                     this.dropPiece(this.selectedCapturedPiece.piece, row, col);
                     this.selectedCapturedPiece = null;
-                    this.updateCapturedPieces(); // UIを更新
+                    this.updateCapturedPieces();
                 } else {
-                    // 打てないマス（二歩など）
                     alert('そのマスには打てません（二歩などの禁じ手）');
                 }
             } else {
-                // 既に駒があるマス
                 this.selectedCapturedPiece = null;
                 this.updateCapturedPieces();
-                // その駒を選択
-                if ((this.currentTurn === 'sente' && this.isSente(piece)) ||
-                    (this.currentTurn === 'gote' && this.isGote(piece))) {
+                if (this.isCurrentPlayerPiece(piece)) {
                     this.selectedCell = [row, col];
                     this.highlightMoves();
                 }
@@ -612,10 +393,7 @@ class ShogiGame {
             if (isValidMove) {
                 this.movePiece(selectedRow, selectedCol, row, col);
             } else {
-                // 新しい駒を選択
-                if (piece && 
-                    ((this.currentTurn === 'sente' && this.isSente(piece)) ||
-                     (this.currentTurn === 'gote' && this.isGote(piece)))) {
+                if (piece && this.isCurrentPlayerPiece(piece)) {
                     this.selectedCell = [row, col];
                     this.highlightMoves();
                 } else {
@@ -624,16 +402,24 @@ class ShogiGame {
                 }
             }
         } else {
-            // 駒を選択
-            if (piece && 
-                ((this.currentTurn === 'sente' && this.isSente(piece)) ||
-                 (this.currentTurn === 'gote' && this.isGote(piece)))) {
+            if (piece && this.isCurrentPlayerPiece(piece)) {
                 this.selectedCell = [row, col];
                 this.highlightMoves();
             }
         }
     }
 
+    /**
+     * 現在のプレイヤーの駒かどうか
+     */
+    isCurrentPlayerPiece(piece) {
+        return (this.currentTurn === PLAYER.SENTE && this.isSente(piece)) ||
+               (this.currentTurn === PLAYER.GOTE && this.isGote(piece));
+    }
+
+    /**
+     * 移動可能な位置をハイライト
+     */
     highlightMoves() {
         this.renderBoard();
         if (this.selectedCell) {
@@ -649,137 +435,138 @@ class ShogiGame {
         }
     }
 
+    /**
+     * ターン表示を更新
+     */
     updateTurnIndicator() {
         const turnElement = document.getElementById('currentTurn');
-        turnElement.textContent = this.currentTurn === 'sente' ? '先手の番' : '後手の番';
+        if (turnElement) {
+            turnElement.textContent = this.currentTurn === PLAYER.SENTE ? '先手の番' : '後手の番';
+        }
     }
 
+    /**
+     * 持ち駒表示を更新
+     */
     updateCapturedPieces() {
         const topList = document.getElementById('capturedTopList');
         const bottomList = document.getElementById('capturedBottomList');
         
+        if (!topList || !bottomList) return;
+        
         topList.innerHTML = '';
         bottomList.innerHTML = '';
         
-        // 持ち駒を集計（同じ駒が複数ある場合）
-        const gotePieces = {};
-        this.capturedPieces.gote.forEach(piece => {
-            gotePieces[piece] = (gotePieces[piece] || 0) + 1;
-        });
-        
-        const sentePieces = {};
-        this.capturedPieces.sente.forEach(piece => {
-            sentePieces[piece] = (sentePieces[piece] || 0) + 1;
-        });
+        // 持ち駒を集計
+        const gotePieces = this.countPieces(this.capturedPieces.gote);
+        const sentePieces = this.countPieces(this.capturedPieces.sente);
         
         // 後手の持ち駒を表示
-        Object.keys(gotePieces).forEach(piece => {
-            const count = gotePieces[piece];
-            const pieceElement = document.createElement('div');
-            pieceElement.className = 'captured-piece';
-            if (count > 1) {
-                pieceElement.textContent = `${this.getPieceName(piece)}×${count}`;
-            } else {
-                pieceElement.textContent = this.getPieceName(piece);
-            }
-            pieceElement.dataset.piece = piece;
-            
-            // 選択されている場合はハイライト
-            if (this.selectedCapturedPiece && 
-                this.selectedCapturedPiece.piece === piece && 
-                this.selectedCapturedPiece.player === 'gote') {
-                pieceElement.classList.add('selected-captured');
-            }
-            
-            pieceElement.addEventListener('click', () => this.handleCapturedPieceClick(piece, 'gote'));
-            topList.appendChild(pieceElement);
-        });
+        this.renderCapturedPieces(gotePieces, topList, PLAYER.GOTE);
         
         // 先手の持ち駒を表示
-        Object.keys(sentePieces).forEach(piece => {
-            const count = sentePieces[piece];
+        this.renderCapturedPieces(sentePieces, bottomList, PLAYER.SENTE);
+    }
+
+    /**
+     * 持ち駒を集計
+     */
+    countPieces(pieces) {
+        const counts = {};
+        pieces.forEach(piece => {
+            counts[piece] = (counts[piece] || 0) + 1;
+        });
+        return counts;
+    }
+
+    /**
+     * 持ち駒を描画
+     */
+    renderCapturedPieces(pieces, container, player) {
+        Object.keys(pieces).forEach(piece => {
+            const count = pieces[piece];
             const pieceElement = document.createElement('div');
             pieceElement.className = 'captured-piece';
-            if (count > 1) {
-                pieceElement.textContent = `${this.getPieceName(piece)}×${count}`;
-            } else {
-                pieceElement.textContent = this.getPieceName(piece);
-            }
+            pieceElement.textContent = count > 1 
+                ? `${this.getPieceName(piece)}×${count}` 
+                : this.getPieceName(piece);
             pieceElement.dataset.piece = piece;
             
-            // 選択されている場合はハイライト
             if (this.selectedCapturedPiece && 
                 this.selectedCapturedPiece.piece === piece && 
-                this.selectedCapturedPiece.player === 'sente') {
+                this.selectedCapturedPiece.player === player) {
                 pieceElement.classList.add('selected-captured');
             }
             
-            pieceElement.addEventListener('click', () => this.handleCapturedPieceClick(piece, 'sente'));
-            bottomList.appendChild(pieceElement);
+            pieceElement.addEventListener('click', () => this.handleCapturedPieceClick(piece, player));
+            container.appendChild(pieceElement);
         });
     }
 
+    /**
+     * 持ち駒クリックを処理
+     */
     handleCapturedPieceClick(piece, player) {
-        if (player !== this.currentTurn) return;
-        if (this.gameOver) return;
+        if (player !== this.currentTurn || this.gameOver) return;
         
-        // 持ち駒を選択状態にする
         if (this.selectedCapturedPiece && 
             this.selectedCapturedPiece.piece === piece && 
             this.selectedCapturedPiece.player === player) {
-            // 既に選択されている場合は選択解除
             this.selectedCapturedPiece = null;
         } else {
-            // 新しい持ち駒を選択
             this.selectedCapturedPiece = { piece: piece, player: player };
-            this.selectedCell = null; // 盤上の選択を解除
+            this.selectedCell = null;
         }
         
-        this.updateCapturedPieces(); // UIを更新
-        this.highlightDropPositions(); // 打てる位置をハイライト
+        this.updateCapturedPieces();
+        this.highlightDropPositions();
     }
     
+    /**
+     * 持ち駒を打てるかどうか
+     */
     canDropPiece(piece, row, col) {
-        // 既に駒があるマスには打てない
         if (this.board[row][col]) return false;
         
         const pieceType = piece.toLowerCase();
         
         // 二歩のチェック
-        if (pieceType === 'p') {
-            const droppedPiece = this.currentTurn === 'sente' ? 'P' : 'p';
-            for (let r = 0; r < 9; r++) {
+        if (pieceType === PIECE_TYPE.PAWN) {
+            const droppedPiece = this.currentTurn === PLAYER.SENTE ? 'P' : 'p';
+            for (let r = 0; r < BOARD_SIZE; r++) {
                 if (this.board[r][col] === droppedPiece) {
-                    return false; // 同じ列に既に歩がある
+                    return false;
                 }
             }
             
-            // 打ち歩詰めのチェック（簡易版：敵陣の最下段には打てない）
-            if (this.currentTurn === 'sente' && row === 0) return false;
-            if (this.currentTurn === 'gote' && row === 8) return false;
+            // 打ち歩詰めのチェック（簡易版）
+            if (this.currentTurn === PLAYER.SENTE && row === 0) return false;
+            if (this.currentTurn === PLAYER.GOTE && row === BOARD_SIZE - 1) return false;
         }
         
         // 桂馬は敵陣の最下段・2段目には打てない
-        if (pieceType === 'n') {
-            if (this.currentTurn === 'sente' && row <= 1) return false;
-            if (this.currentTurn === 'gote' && row >= 7) return false;
+        if (pieceType === PIECE_TYPE.KNIGHT) {
+            if (this.currentTurn === PLAYER.SENTE && row <= 1) return false;
+            if (this.currentTurn === PLAYER.GOTE && row >= BOARD_SIZE - 2) return false;
         }
         
         // 香車は敵陣の最下段には打てない
-        if (pieceType === 'l') {
-            if (this.currentTurn === 'sente' && row === 0) return false;
-            if (this.currentTurn === 'gote' && row === 8) return false;
+        if (pieceType === PIECE_TYPE.LANCE) {
+            if (this.currentTurn === PLAYER.SENTE && row === 0) return false;
+            if (this.currentTurn === PLAYER.GOTE && row === BOARD_SIZE - 1) return false;
         }
         
         return true;
     }
     
+    /**
+     * 打てる位置をハイライト
+     */
     highlightDropPositions() {
         this.renderBoard();
         if (this.selectedCapturedPiece) {
-            // 打てる位置をハイライト
-            for (let row = 0; row < 9; row++) {
-                for (let col = 0; col < 9; col++) {
+            for (let row = 0; row < BOARD_SIZE; row++) {
+                for (let col = 0; col < BOARD_SIZE; col++) {
                     if (this.canDropPiece(this.selectedCapturedPiece.piece, row, col)) {
                         const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
                         if (cell) cell.classList.add('possible-move');
@@ -789,19 +576,25 @@ class ShogiGame {
         }
     }
 
+    /**
+     * AIのターンかどうか
+     */
     isAITurn() {
-        if (this.gameMode === 'human-vs-human') return false;
-        if (this.gameMode === 'human-vs-ai' && this.currentTurn === 'sente') return false;
-        if (this.gameMode === 'human-vs-ai' && this.currentTurn === 'gote') return true;
-        if (this.gameMode === 'ai-vs-ai') return true;
+        if (this.gameMode === GAME_MODE.HUMAN_VS_HUMAN) return false;
+        if (this.gameMode === GAME_MODE.HUMAN_VS_AI && this.currentTurn === PLAYER.SENTE) return false;
+        if (this.gameMode === GAME_MODE.HUMAN_VS_AI && this.currentTurn === PLAYER.GOTE) return true;
+        if (this.gameMode === GAME_MODE.AI_VS_AI) return true;
         return false;
     }
 
+    /**
+     * AIの手を打つ
+     */
     checkAndMakeAIMove() {
         if (this.isAITurn() && !this.gameOver && !this.isReplaying) {
             this.showAIThinking();
-            // AIの思考時間をシミュレート（500ms〜1500ms）
-            const thinkingTime = 500 + Math.random() * 1000;
+            const thinkingTime = AI_THINKING_TIME.MIN + Math.random() * (AI_THINKING_TIME.MAX - AI_THINKING_TIME.MIN);
+            
             setTimeout(() => {
                 if (this.gameOver || this.isReplaying) {
                     this.hideAIThinking();
@@ -822,6 +615,9 @@ class ShogiGame {
         }
     }
 
+    /**
+     * AI思考中を表示
+     */
     showAIThinking() {
         const thinkingElement = document.getElementById('aiThinking');
         if (thinkingElement) {
@@ -829,6 +625,9 @@ class ShogiGame {
         }
     }
 
+    /**
+     * AI思考中を非表示
+     */
     hideAIThinking() {
         const thinkingElement = document.getElementById('aiThinking');
         if (thinkingElement) {
@@ -836,16 +635,17 @@ class ShogiGame {
         }
     }
 
+    /**
+     * 全ての可能な手を取得
+     */
     getAllPossibleMoves(turn) {
         const moves = [];
         
         // 盤上の駒の移動
-        for (let row = 0; row < 9; row++) {
-            for (let col = 0; col < 9; col++) {
+        for (let row = 0; row < BOARD_SIZE; row++) {
+            for (let col = 0; col < BOARD_SIZE; col++) {
                 const piece = this.board[row][col];
-                if (piece && 
-                    ((turn === 'sente' && this.isSente(piece)) ||
-                     (turn === 'gote' && this.isGote(piece)))) {
+                if (piece && this.isPlayerPiece(piece, turn)) {
                     const possibleMoves = this.getPossibleMoves(row, col);
                     possibleMoves.forEach(([toRow, toCol]) => {
                         moves.push({
@@ -864,35 +664,15 @@ class ShogiGame {
         const capturedPieces = this.capturedPieces[turn];
         const uniquePieces = [...new Set(capturedPieces)];
         uniquePieces.forEach(piece => {
-            for (let row = 0; row < 9; row++) {
-                for (let col = 0; col < 9; col++) {
-                    if (!this.board[row][col]) {
-                        // 二歩チェック
-                        if (piece === 'p') {
-                            let hasPawn = false;
-                            for (let r = 0; r < 9; r++) {
-                                const p = this.board[r][col];
-                                if (p && ((turn === 'sente' && p === 'P') || (turn === 'gote' && p === 'p'))) {
-                                    hasPawn = true;
-                                    break;
-                                }
-                            }
-                            if (!hasPawn) {
-                                moves.push({
-                                    type: 'drop',
-                                    piece: piece,
-                                    toRow: row,
-                                    toCol: col
-                                });
-                            }
-                        } else {
-                            moves.push({
-                                type: 'drop',
-                                piece: piece,
-                                toRow: row,
-                                toCol: col
-                            });
-                        }
+            for (let row = 0; row < BOARD_SIZE; row++) {
+                for (let col = 0; col < BOARD_SIZE; col++) {
+                    if (!this.board[row][col] && this.canDropPiece(piece, row, col)) {
+                        moves.push({
+                            type: 'drop',
+                            piece: piece,
+                            toRow: row,
+                            toCol: col
+                        });
                     }
                 }
             }
@@ -901,10 +681,21 @@ class ShogiGame {
         return moves;
     }
 
+    /**
+     * 指定プレイヤーの駒かどうか
+     */
+    isPlayerPiece(piece, turn) {
+        return (turn === PLAYER.SENTE && this.isSente(piece)) ||
+               (turn === PLAYER.GOTE && this.isGote(piece));
+    }
+
+    /**
+     * 王が存在するかどうか
+     */
     hasKing(player) {
-        const kingPiece = player === 'sente' ? 'K' : 'k';
-        for (let row = 0; row < 9; row++) {
-            for (let col = 0; col < 9; col++) {
+        const kingPiece = player === PLAYER.SENTE ? 'K' : 'k';
+        for (let row = 0; row < BOARD_SIZE; row++) {
+            for (let col = 0; col < BOARD_SIZE; col++) {
                 const piece = this.board[row][col];
                 if (piece && piece.replace('+', '') === kingPiece) {
                     return true;
@@ -914,46 +705,59 @@ class ShogiGame {
         return false;
     }
 
-    showGameEndMessage() {
-        // ゲーム終了メッセージを表示（棋譜コントロールの上に表示）
-        const controls = document.querySelector('.move-history-controls');
-        if (controls) {
-            let message = '';
-            if (this.winner === 'sente') {
-                message = '🎉 先手の勝ち！';
-            } else if (this.winner === 'gote') {
-                message = '🎉 後手の勝ち！';
-            } else {
-                message = 'ゲーム終了（引き分け）';
-            }
-            
-            // メッセージ要素が既に存在する場合は更新、なければ作成
-            let messageElement = document.getElementById('gameEndMessage');
-            if (!messageElement) {
-                messageElement = document.createElement('div');
-                messageElement.id = 'gameEndMessage';
-                messageElement.className = 'game-end-message';
-                controls.insertBefore(messageElement, controls.firstChild);
-            }
-            messageElement.textContent = message;
+    /**
+     * ゲーム終了をチェック
+     */
+    checkGameEnd() {
+        if (!this.hasKing(PLAYER.SENTE)) {
+            this.gameOver = true;
+            this.winner = PLAYER.GOTE;
+            this.showReplayMode();
+            return;
+        }
+        if (!this.hasKing(PLAYER.GOTE)) {
+            this.gameOver = true;
+            this.winner = PLAYER.SENTE;
+            this.showReplayMode();
+            return;
         }
     }
+
+    /**
+     * ゲーム終了メッセージを表示
+     */
+    showGameEndMessage() {
+        const controls = document.querySelector('.move-history-controls');
+        if (!controls) return;
+        
+        let message = '';
+        if (this.winner === PLAYER.SENTE) {
+            message = '🎉 先手の勝ち！';
+        } else if (this.winner === PLAYER.GOTE) {
+            message = '🎉 後手の勝ち！';
+        } else {
+            message = 'ゲーム終了（引き分け）';
+        }
+        
+        let messageElement = document.getElementById('gameEndMessage');
+        if (!messageElement) {
+            messageElement = document.createElement('div');
+            messageElement.id = 'gameEndMessage';
+            messageElement.className = 'game-end-message';
+            controls.insertBefore(messageElement, controls.firstChild);
+        }
+        messageElement.textContent = message;
+    }
     
+    /**
+     * 再生モードを表示
+     */
     showReplayMode() {
-        // ゲーム終了メッセージを表示
         this.showGameEndMessage();
         
-        // ゲーム終了後、棋譜の再実行モードを有効にする
-        // 盤面の操作を無効化（棋譜コントロールのみ有効）
-        const cells = document.querySelectorAll('.cell');
-        cells.forEach(cell => {
-            cell.style.pointerEvents = 'none';
-        });
-        
-        // 持ち駒の操作も無効化
-        const capturedPieces = document.querySelectorAll('.captured-piece');
-        capturedPieces.forEach(piece => {
-            piece.style.pointerEvents = 'none';
+        // 盤面と持ち駒の操作を無効化
+        document.querySelectorAll('.cell, .captured-piece').forEach(element => {
+            element.style.pointerEvents = 'none';
         });
         
         // 棋譜コントロールを強調表示
@@ -970,26 +774,20 @@ class ShogiGame {
             panel.style.border = '2px solid #ffc107';
         }
         
-        // 棋譜コントロールを有効にする
         this.updateMoveControls();
     }
     
+    /**
+     * 再生モードを終了
+     */
     exitReplayMode() {
-        // ゲーム終了メッセージを削除
         const messageElement = document.getElementById('gameEndMessage');
         if (messageElement) {
             messageElement.remove();
         }
         
-        // 再実行モードを終了して、通常の操作を有効化
-        const cells = document.querySelectorAll('.cell');
-        cells.forEach(cell => {
-            cell.style.pointerEvents = '';
-        });
-        
-        const capturedPieces = document.querySelectorAll('.captured-piece');
-        capturedPieces.forEach(piece => {
-            piece.style.pointerEvents = '';
+        document.querySelectorAll('.cell, .captured-piece').forEach(element => {
+            element.style.pointerEvents = '';
         });
         
         const controls = document.querySelector('.move-history-controls');
@@ -1004,10 +802,11 @@ class ShogiGame {
         }
     }
     
+    /**
+     * ゲームを終了
+     */
     exitGame() {
-        // 終了確認
         if (confirm('ゲームを終了しますか？')) {
-            // ゲーム画面を非表示にするか、終了メッセージを表示
             const container = document.querySelector('.container');
             if (container) {
                 container.innerHTML = `
@@ -1023,14 +822,16 @@ class ShogiGame {
         }
     }
 
-    // 棋譜から状態を復元
+    /**
+     * 棋譜から状態を復元
+     */
     restoreFromHistory(targetIndex) {
         this.isReplaying = true;
         
         // 初期状態に戻す
         this.board = this.initializeBoard();
         this.capturedPieces = { sente: [], gote: [] };
-        this.currentTurn = 'sente';
+        this.currentTurn = PLAYER.SENTE;
         this.gameOver = false;
         this.winner = null;
         
@@ -1050,26 +851,41 @@ class ShogiGame {
         this.updateMoveControls();
     }
     
+    /**
+     * 一手戻る
+     */
     goToPreviousMove() {
         if (this.currentMoveIndex >= 0) {
             this.restoreFromHistory(this.currentMoveIndex - 1);
         }
     }
     
+    /**
+     * 一手進む
+     */
     goToNextMove() {
         if (this.currentMoveIndex < this.moveHistory.length - 1) {
             this.restoreFromHistory(this.currentMoveIndex + 1);
         }
     }
     
+    /**
+     * 最初の手へ
+     */
     goToFirstMove() {
         this.restoreFromHistory(-1);
     }
     
+    /**
+     * 最後の手へ
+     */
     goToLastMove() {
         this.restoreFromHistory(this.moveHistory.length - 1);
     }
     
+    /**
+     * 棋譜コントロールを更新
+     */
     updateMoveControls() {
         const prevBtn = document.getElementById('prevMoveBtn');
         const nextBtn = document.getElementById('nextMoveBtn');
@@ -1084,6 +900,9 @@ class ShogiGame {
         if (counter) counter.textContent = `手数: ${this.currentMoveIndex + 1} / ${this.moveHistory.length}`;
     }
     
+    /**
+     * 棋譜表示を更新
+     */
     updateMoveHistoryDisplay() {
         const listElement = document.getElementById('moveHistoryList');
         if (!listElement) return;
@@ -1100,14 +919,14 @@ class ShogiGame {
                 const fromPos = this.positionToNotation(move.fromRow, move.fromCol);
                 const toPos = this.positionToNotation(move.toRow, move.toCol);
                 const promote = move.promoted ? '成' : '';
-                moveText = `${index + 1}. ${move.turn === 'sente' ? '先手' : '後手'} ${pieceName}${fromPos}→${toPos}${promote}`;
+                moveText = `${index + 1}. ${move.turn === PLAYER.SENTE ? '先手' : '後手'} ${pieceName}${fromPos}→${toPos}${promote}`;
                 if (move.captured) {
                     moveText += ` (${this.getPieceName(move.captured)}を取る)`;
                 }
             } else if (move.type === 'drop') {
                 const pieceName = this.getPieceName(move.piece);
                 const toPos = this.positionToNotation(move.toRow, move.toCol);
-                moveText = `${index + 1}. ${move.turn === 'sente' ? '先手' : '後手'} ${pieceName}打${toPos}`;
+                moveText = `${index + 1}. ${move.turn === PLAYER.SENTE ? '先手' : '後手'} ${pieceName}打${toPos}`;
             }
             
             moveElement.textContent = moveText;
@@ -1119,15 +938,61 @@ class ShogiGame {
         });
     }
     
+    /**
+     * 位置を表記に変換
+     */
     positionToNotation(row, col) {
         const colNames = ['９', '８', '７', '６', '５', '４', '３', '２', '１'];
         const rowNames = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
         return colNames[col] + rowNames[row];
     }
 
+    /**
+     * 手を記録
+     */
+    recordMove(moveData) {
+        const moveRecord = {
+            ...moveData,
+            turn: this.currentTurn,
+            capturedPiecesBefore: {
+                sente: [...this.capturedPieces.sente],
+                gote: [...this.capturedPieces.gote]
+            }
+        };
+        
+        // 現在の位置より後ろの手を削除（分岐を削除）
+        this.moveHistory = this.moveHistory.slice(0, this.currentMoveIndex + 1);
+        this.moveHistory.push(moveRecord);
+        this.currentMoveIndex = this.moveHistory.length - 1;
+        this.updateMoveHistoryDisplay();
+    }
+
+    /**
+     * ターンを切り替え
+     */
+    switchTurn() {
+        this.currentTurn = this.currentTurn === PLAYER.SENTE ? PLAYER.GOTE : PLAYER.SENTE;
+        this.selectedCell = null;
+        this.selectedCapturedPiece = null;
+        this.pendingPromotion = null;
+    }
+
+    /**
+     * UIを更新
+     */
+    updateUI() {
+        this.renderBoard();
+        this.updateTurnIndicator();
+        this.updateCapturedPieces();
+        this.updateMoveControls();
+    }
+
+    /**
+     * リセット
+     */
     reset() {
         this.board = this.initializeBoard();
-        this.currentTurn = 'sente';
+        this.currentTurn = PLAYER.SENTE;
         this.selectedCell = null;
         this.selectedCapturedPiece = null;
         this.pendingPromotion = null;
@@ -1137,293 +1002,25 @@ class ShogiGame {
         this.moveHistory = [];
         this.currentMoveIndex = -1;
         this.isReplaying = false;
+        
         // AIレベルを更新
         const aiLevelSelect = document.getElementById('aiLevel');
         if (aiLevelSelect) {
             this.aiLevel = aiLevelSelect.value;
             this.ai = new ShogiAI(this.aiLevel);
         }
-        this.renderBoard();
-        this.updateTurnIndicator();
-        this.updateCapturedPieces();
-        this.updateMoveControls();
-        this.updateMoveHistoryDisplay();
+        
+        // PieceMovesを更新
+        this.pieceMoves.board = this.board;
+        
+        this.updateUI();
         this.hideAIThinking();
         this.hidePromoteModal();
         this.exitReplayMode();
         
         // AI対AIモードの場合は最初からAIが手を打つ
-        if (this.gameMode === 'ai-vs-ai') {
-            // 少し遅延させてから開始（UI更新を待つ）
-            setTimeout(() => {
-                this.checkAndMakeAIMove();
-            }, 100);
-        }
-    }
-}
-
-// AIプレイヤークラス
-class ShogiAI {
-    constructor(level = 'intermediate') {
-        this.level = level;
-        this.pieceValues = {
-            'k': 10000, 'K': 10000, // 王
-            'r': 500, 'R': 500,     // 飛
-            'b': 400, 'B': 400,     // 角
-            'g': 300, 'G': 300,     // 金
-            's': 200, 'S': 200,     // 銀
-            'n': 150, 'N': 150,     // 桂
-            'l': 150, 'L': 150,     // 香
-            'p': 100, 'P': 100,     // 歩
-            '+r': 600, '+R': 600,   // 龍
-            '+b': 550, '+B': 550,   // 馬
-            '+s': 250, '+S': 250,   // 全
-            '+n': 200, '+N': 200,   // 圭
-            '+l': 200, '+L': 200,   // 杏
-            '+p': 150, '+P': 150    // と
-        };
-    }
-
-    getBestMove(game, turn) {
-        const allMoves = game.getAllPossibleMoves(turn);
-        if (allMoves.length === 0) return null;
-        
-        switch (this.level) {
-            case 'beginner':
-                return this.getBeginnerMove(allMoves, game, turn);
-            case 'intermediate':
-                return this.getIntermediateMove(allMoves, game, turn);
-            case 'advanced':
-                return this.getAdvancedMove(allMoves, game, turn);
-            default:
-                return this.getIntermediateMove(allMoves, game, turn);
-        }
-    }
-
-    // 初級：ランダムまたは簡単な評価
-    getBeginnerMove(allMoves, game, turn) {
-        // 50%の確率でランダム、50%で簡単な評価
-        if (Math.random() < 0.5) {
-            const randomIndex = Math.floor(Math.random() * allMoves.length);
-            return allMoves[randomIndex];
-        }
-        
-        // 簡単な評価：取れる駒がある場合は優先
-        let bestMove = null;
-        let bestScore = -Infinity;
-        
-        for (const move of allMoves) {
-            let score = 0;
-            if (move.type === 'move') {
-                const targetPiece = game.board[move.toRow][move.toCol];
-                if (targetPiece) {
-                    const pieceType = targetPiece.replace('+', '');
-                    score = this.pieceValues[pieceType] || 0;
-                }
-            }
-            
-            if (score > bestScore) {
-                bestScore = score;
-                bestMove = move;
-            }
-        }
-        
-        return bestMove || allMoves[Math.floor(Math.random() * allMoves.length)];
-    }
-
-    // 中級：基本的な評価関数
-    getIntermediateMove(allMoves, game, turn) {
-        let bestMove = null;
-        let bestScore = -Infinity;
-        
-        for (const move of allMoves) {
-            const score = this.evaluateMove(move, game, turn);
-            if (score > bestScore) {
-                bestScore = score;
-                bestMove = move;
-            }
-        }
-        
-        return bestMove || allMoves[0];
-    }
-
-    // 上級：ミニマックス法（簡易版）
-    getAdvancedMove(allMoves, game, turn) {
-        let bestMove = null;
-        let bestScore = -Infinity;
-        const depth = 2; // 探索深度
-        
-        for (const move of allMoves) {
-            // 仮想的に手を打つ
-            const gameCopy = this.cloneGame(game);
-            this.makeMove(gameCopy, move, turn);
-            
-            // ミニマックス評価（簡易版）
-            const score = this.minimax(gameCopy, depth - 1, turn === 'sente' ? 'gote' : 'sente', false);
-            
-            if (score > bestScore) {
-                bestScore = score;
-                bestMove = move;
-            }
-        }
-        
-        return bestMove || this.getIntermediateMove(allMoves, game, turn);
-    }
-
-    // 手の評価
-    evaluateMove(move, game, turn) {
-        let score = 0;
-        
-        if (move.type === 'move') {
-            const targetPiece = game.board[move.toRow][move.toCol];
-            // 取れる駒の価値
-            if (targetPiece) {
-                const pieceType = targetPiece.replace('+', '');
-                score += this.pieceValues[pieceType] || 0;
-            }
-            
-            // 自分の駒の位置評価
-            const fromPiece = game.board[move.fromRow][move.fromCol];
-            if (fromPiece) {
-                const pieceType = fromPiece.replace('+', '').toLowerCase();
-                // 前進を評価（簡易版）
-                if (turn === 'sente' && move.toRow < move.fromRow) {
-                    score += 10;
-                } else if (turn === 'gote' && move.toRow > move.fromRow) {
-                    score += 10;
-                }
-            }
-        } else if (move.type === 'drop') {
-            // 持ち駒を打つ場合の評価
-            const pieceValue = this.pieceValues[move.piece] || 0;
-            score += pieceValue * 0.1; // 持ち駒を打つのは少しマイナス評価
-            
-            // 敵陣に打つ場合はプラス評価
-            if (turn === 'sente' && move.toRow < 3) {
-                score += 20;
-            } else if (turn === 'gote' && move.toRow > 5) {
-                score += 20;
-            }
-        }
-        
-        return score;
-    }
-
-    // ミニマックス法（簡易版）
-    minimax(game, depth, turn, isMaximizing) {
-        if (depth === 0) {
-            return this.evaluatePosition(game, turn === 'sente' ? 'gote' : 'sente');
-        }
-        
-        const moves = game.getAllPossibleMoves(turn);
-        if (moves.length === 0) {
-            return isMaximizing ? -Infinity : Infinity;
-        }
-        
-        if (isMaximizing) {
-            let maxScore = -Infinity;
-            for (const move of moves.slice(0, 10)) { // 最初の10手のみ評価（パフォーマンス向上）
-                const gameCopy = this.cloneGame(game);
-                this.makeMove(gameCopy, move, turn);
-                const score = this.minimax(gameCopy, depth - 1, turn === 'sente' ? 'gote' : 'sente', false);
-                maxScore = Math.max(maxScore, score);
-            }
-            return maxScore;
-        } else {
-            let minScore = Infinity;
-            for (const move of moves.slice(0, 10)) {
-                const gameCopy = this.cloneGame(game);
-                this.makeMove(gameCopy, move, turn);
-                const score = this.minimax(gameCopy, depth - 1, turn === 'sente' ? 'gote' : 'sente', true);
-                minScore = Math.min(minScore, score);
-            }
-            return minScore;
-        }
-    }
-
-    // 局面評価
-    evaluatePosition(game, myTurn) {
-        let score = 0;
-        
-        // 盤上の駒の価値
-        for (let row = 0; row < 9; row++) {
-            for (let col = 0; col < 9; col++) {
-                const piece = game.board[row][col];
-                if (piece) {
-                    const pieceType = piece.replace('+', '');
-                    const value = this.pieceValues[pieceType] || 0;
-                    
-                    if ((myTurn === 'sente' && game.isSente(piece)) ||
-                        (myTurn === 'gote' && game.isGote(piece))) {
-                        score += value;
-                    } else {
-                        score -= value;
-                    }
-                }
-            }
-        }
-        
-        // 持ち駒の価値
-        game.capturedPieces[myTurn].forEach(piece => {
-            score += (this.pieceValues[piece] || 0) * 0.8;
-        });
-        
-        const opponent = myTurn === 'sente' ? 'gote' : 'sente';
-        game.capturedPieces[opponent].forEach(piece => {
-            score -= (this.pieceValues[piece] || 0) * 0.8;
-        });
-        
-        return score;
-    }
-
-    // ゲーム状態のクローン（簡易版）
-    cloneGame(game) {
-        const cloned = {
-            board: game.board.map(row => [...row]),
-            capturedPieces: {
-                sente: [...game.capturedPieces.sente],
-                gote: [...game.capturedPieces.gote]
-            },
-            currentTurn: game.currentTurn,
-            isSente: (piece) => game.isSente(piece),
-            isGote: (piece) => game.isGote(piece),
-            getPossibleMoves: (row, col) => game.getPossibleMoves(row, col),
-            getAllPossibleMoves: (turn) => game.getAllPossibleMoves(turn),
-            isValidPosition: (row, col) => game.isValidPosition(row, col)
-        };
-        return cloned;
-    }
-
-    // 仮想的に手を打つ
-    makeMove(game, move, turn) {
-        if (move.type === 'move') {
-            const piece = game.board[move.fromRow][move.fromCol];
-            const captured = game.board[move.toRow][move.toCol];
-            
-            if (captured) {
-                const capturedPiece = captured.replace('+', '').toLowerCase();
-                game.capturedPieces[turn].push(capturedPiece);
-            }
-            
-            game.board[move.toRow][move.toCol] = piece;
-            game.board[move.fromRow][move.fromCol] = null;
-            
-            // 成りの判定（AIは基本的に成る）
-            const canPromote = (turn === 'sente' && (move.toRow < 3 || move.fromRow < 3)) ||
-                              (turn === 'gote' && (move.toRow > 5 || move.fromRow > 5));
-            if (canPromote && !piece.includes('+') && piece.toLowerCase() !== 'k' && piece.toLowerCase() !== 'g') {
-                // AIは基本的に成る（評価関数で最適な選択をしている）
-                game.board[move.toRow][move.toCol] = '+' + piece;
-            }
-        } else if (move.type === 'drop') {
-            const pieceType = move.piece.toLowerCase();
-            const droppedPiece = turn === 'sente' ? pieceType.toUpperCase() : pieceType;
-            game.board[move.toRow][move.toCol] = droppedPiece;
-            
-            const index = game.capturedPieces[turn].indexOf(pieceType);
-            if (index > -1) {
-                game.capturedPieces[turn].splice(index, 1);
-            }
+        if (this.gameMode === GAME_MODE.AI_VS_AI) {
+            setTimeout(() => this.checkAndMakeAIMove(), UI_UPDATE_DELAY);
         }
     }
 }
@@ -1433,18 +1030,16 @@ let game;
 window.addEventListener('DOMContentLoaded', () => {
     game = new ShogiGame();
     
-    // 初期状態のgameModeを確認（HTMLの選択状態から取得）
+    // 初期状態のgameModeを確認
     const gameModeSelect = document.getElementById('gameMode');
     if (gameModeSelect) {
         game.gameMode = gameModeSelect.value;
     }
     
     // AI対AIモードの場合は最初からAIが手を打つ
-    if (game.gameMode === 'ai-vs-ai') {
-        // 少し遅延させてから開始（UI更新を待つ）
+    if (game.gameMode === GAME_MODE.AI_VS_AI) {
         setTimeout(() => {
             game.checkAndMakeAIMove();
-        }, 200);
+        }, UI_UPDATE_DELAY * 2);
     }
 });
-
