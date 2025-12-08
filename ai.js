@@ -17,8 +17,12 @@ export class ShogiAI {
     constructor(level = AI_LEVEL.INTERMEDIATE, ollamaEndpoint = null, ollamaModel = null) {
         this.level = level;
         this.pieceValues = PIECE_VALUES;
-        // Ollama設定（UIがなくても動くようにデフォルトを使用）
-        this.ollamaEndpoint = (ollamaEndpoint ?? OLLAMA_CONFIG.ENDPOINT).replace(/\/$/, '');
+        this.configureOllama(ollamaEndpoint, ollamaModel);
+    }
+
+    configureOllama(ollamaEndpoint, ollamaModel) {
+        const endpoint = ollamaEndpoint ?? OLLAMA_CONFIG.ENDPOINT;
+        this.ollamaEndpoint = (endpoint || '').replace(/\/$/, '');
         this.ollamaModel = ollamaModel ?? OLLAMA_CONFIG.MODEL;
         this.timeoutMs = OLLAMA_CONFIG.TIMEOUT ?? 30000;
     }
@@ -307,7 +311,7 @@ export class ShogiAI {
      */
     async getBestMoveAsync(game, turn) {
         if (this.level !== AI_LEVEL.OLLAMA) {
-            return Promise.resolve(this.getBestMove(game, turn));
+            return this.getBestMove(game, turn);
         }
         
         const allMoves = game.getAllPossibleMoves(turn);
@@ -324,7 +328,6 @@ export class ShogiAI {
             return move || this.getIntermediateMove(allMoves, game, turn);
         } catch (error) {
             console.error('Ollama呼び出しエラー:', error);
-            // エラー時は中級AIにフォールバック
             return this.getIntermediateMove(allMoves, game, turn);
         }
     }
@@ -360,36 +363,41 @@ ${movesText}
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
-        const response = await fetch(`${this.ollamaEndpoint}/api/generate`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                model: this.ollamaModel,
-                prompt: prompt,
-                stream: false,
-            }),
-            signal: controller.signal
-        }).finally(() => clearTimeout(timeoutId));
 
-        if (!response.ok) {
-            throw new Error(`Ollama API error: ${response.status}`);
-        }
+        try {
+            const response = await fetch(`${this.ollamaEndpoint}/api/generate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: this.ollamaModel,
+                    prompt: prompt,
+                    stream: false,
+                }),
+                signal: controller.signal
+            });
 
-        const data = await response.json();
-        const answer = data.response.trim();
-        
-        // 回答から番号を抽出
-        const match = answer.match(/\d+/);
-        if (match) {
-            const moveIndex = parseInt(match[0]) - 1;
-            if (moveIndex >= 0 && moveIndex < allMoves.length) {
-                return allMoves[moveIndex];
+            if (!response.ok) {
+                throw new Error(`Ollama API error: ${response.status}`);
             }
+
+            const data = await response.json();
+            const answer = (data?.response || '').trim();
+            
+            const match = answer.match(/\d+/);
+            if (match) {
+                const moveIndex = parseInt(match[0]) - 1;
+                if (moveIndex >= 0 && moveIndex < allMoves.length) {
+                    return allMoves[moveIndex];
+                }
+            }
+
+            console.warn('[Ollama] invalid response format', { answer });
+            return null;
+        } finally {
+            clearTimeout(timeoutId);
         }
-        
-        return null;
     }
 
     /**
