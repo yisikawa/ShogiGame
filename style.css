@@ -243,6 +243,33 @@ h1 {
     transition: border-color 0.3s;
 }
 
+.ollama-model {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ollama-model label {
+    font-weight: bold;
+    color: #333;
+}
+
+.ollama-model input {
+    padding: 8px 12px;
+    border: 2px solid #ddd;
+    border-radius: 5px;
+    font-size: 1em;
+    background: white;
+    transition: border-color 0.3s;
+    min-width: 150px;
+}
+
+.ollama-model input:hover,
+.ollama-model input:focus {
+    border-color: #667eea;
+    outline: none;
+}
+
 .ai-thinking {
     text-align: center;
     margin-top: 10px;

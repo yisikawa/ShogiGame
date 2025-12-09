@@ -11,7 +11,8 @@ import {
     ENEMY_TERRITORY_GOTE,
     PIECE_TYPE,
     AI_THINKING_TIME,
-    UI_UPDATE_DELAY
+    UI_UPDATE_DELAY,
+    OLLAMA_CONFIG
 } from './constants.js';
 import { PieceMoves } from './pieceMoves.js';
 import { ShogiAI } from './ai.js';
@@ -31,7 +32,7 @@ export class ShogiGame {
         };
         this.gameMode = GAME_MODE.HUMAN_VS_HUMAN;
         this.aiLevel = AI_LEVEL.INTERMEDIATE;
-        this.ai = new ShogiAI(this.aiLevel);
+        this.ai = this.createAI();
         this.gameOver = false;
         this.winner = null;
         this.pendingPromotion = null;
@@ -71,6 +72,15 @@ export class ShogiGame {
     }
 
     /**
+     * AIインスタンスを作成
+     */
+    createAI() {
+        const ollamaModelInput = document.getElementById('ollamaModel');
+        const ollamaModel = ollamaModelInput ? ollamaModelInput.value.trim() || OLLAMA_CONFIG.MODEL : OLLAMA_CONFIG.MODEL;
+        return new ShogiAI(this.aiLevel, null, ollamaModel);
+    }
+
+    /**
      * イベントリスナーの設定
      */
     setupEventListeners() {
@@ -85,7 +95,13 @@ export class ShogiGame {
             },
             'aiLevel': (e) => {
                 this.aiLevel = e.target.value;
-                this.ai = new ShogiAI(this.aiLevel);
+                this.ai = this.createAI();
+            },
+            'ollamaModel': (e) => {
+                // Ollamaモデルが変更された場合、Ollamaモードの場合はAIを再作成
+                if (this.aiLevel === AI_LEVEL.OLLAMA) {
+                    this.ai = this.createAI();
+                }
             },
             'newGameBtn': () => {
                 this.exitReplayMode();
@@ -1191,7 +1207,7 @@ export class ShogiGame {
         const aiLevelSelect = document.getElementById('aiLevel');
         if (aiLevelSelect) {
             this.aiLevel = aiLevelSelect.value;
-            this.ai = new ShogiAI(this.aiLevel);
+            this.ai = this.createAI();
         }
         
         // PieceMovesを更新
