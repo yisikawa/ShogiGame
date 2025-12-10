@@ -40,6 +40,7 @@ export class ShogiGame {
         this.isReplaying = false;
         this.positionHistory = []; // 局面履歴（千日手判定用）
         this.checkHistory = []; // 王手履歴（連続王手の千日手判定用）
+        this.pendingKifuData = null; // プレビュー中の棋譜データ
         
         // 駒の移動ロジックを初期化
         this.pieceMoves = new PieceMoves(
@@ -97,13 +98,29 @@ export class ShogiGame {
             'prevMoveBtn': () => this.goToPreviousMove(),
             'nextMoveBtn': () => this.goToNextMove(),
             'firstMoveBtn': () => this.goToFirstMove(),
-            'lastMoveBtn': () => this.goToLastMove()
+            'lastMoveBtn': () => this.goToLastMove(),
+            'downloadKifuBtn': () => this.downloadKifu(),
+            'uploadKifuBtn': () => {
+                const input = document.getElementById('uploadKifuInput');
+                if (input) input.click();
+            },
+            'uploadKifuInput': (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    this.previewKifuData(file);
+                }
+            },
+            'loadKifuBtn': () => this.loadKifuFromPreview(),
+            'cancelKifuBtn': () => this.hideKifuDataModal()
         };
 
         Object.entries(handlers).forEach(([id, handler]) => {
             const element = document.getElementById(id);
             if (element) {
-                const eventType = id.includes('Btn') ? 'click' : 'change';
+                let eventType = 'click';
+                if (id.includes('Input') || id.includes('select') || id === 'gameMode' || id === 'aiLevel') {
+                    eventType = 'change';
+                }
                 element.addEventListener(eventType, handler);
             }
         });
@@ -1075,11 +1092,21 @@ export class ShogiGame {
         const lastBtn = document.getElementById('lastMoveBtn');
         const counter = document.getElementById('moveCounter');
         
+        const totalMoves = this.moveHistory.length;
+        const currentMove = this.currentMoveIndex + 1;
+        
         if (prevBtn) prevBtn.disabled = this.currentMoveIndex < 0;
-        if (nextBtn) nextBtn.disabled = this.currentMoveIndex >= this.moveHistory.length - 1;
+        if (nextBtn) nextBtn.disabled = this.currentMoveIndex >= totalMoves - 1;
         if (firstBtn) firstBtn.disabled = this.currentMoveIndex < 0;
-        if (lastBtn) lastBtn.disabled = this.currentMoveIndex >= this.moveHistory.length - 1;
-        if (counter) counter.textContent = `手数: ${this.currentMoveIndex + 1} / ${this.moveHistory.length}`;
+        if (lastBtn) lastBtn.disabled = this.currentMoveIndex >= totalMoves - 1;
+        if (counter) {
+            // 手数が0の場合は0/0と表示、それ以外は現在の手数/総手数を表示
+            if (totalMoves === 0) {
+                counter.textContent = `手数: 0 / 0`;
+            } else {
+                counter.textContent = `手数: ${currentMove} / ${totalMoves}`;
+            }
+        }
     }
     
     /**
@@ -1206,6 +1233,321 @@ export class ShogiGame {
         if (this.gameMode === GAME_MODE.AI_VS_AI) {
             setTimeout(() => this.checkAndMakeAIMove(), UI_UPDATE_DELAY);
         }
+    }
+
+    /**
+     * 棋譜をJSONデータに変換
+     */
+    exportKifuToJSON() {
+        const kifuData = {
+            version: '1.0',
+            timestamp: new Date().toISOString(),
+            gameMode: this.gameMode,
+            winner: this.winner,
+            moves: this.moveHistory,
+            initialBoard: INITIAL_BOARD.map(row => [...row])
+        };
+        return JSON.stringify(kifuData, null, 2);
+    }
+
+    /**
+     * 棋譜をJSONファイルとしてダウンロード
+     */
+    downloadKifu() {
+        if (this.moveHistory.length === 0) {
+            alert('棋譜がありません');
+            return;
+        }
+
+        const jsonData = this.exportKifuToJSON();
+        const blob = new Blob([jsonData], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `shogi-kifu-${Date.now()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    /**
+     * アップロードされた棋譜データをプレビュー表示
+     */
+    async previewKifuData(file) {
+        try {
+            const text = await file.text();
+            const kifuData = JSON.parse(text);
+
+            // バリデーション
+            if (!kifuData.moves || !Array.isArray(kifuData.moves)) {
+                throw new Error('無効な棋譜ファイルです');
+            }
+
+            // データを一時保存
+            this.pendingKifuData = kifuData;
+
+            // 情報を表示
+            this.showKifuDataInfo(kifuData);
+        } catch (error) {
+            console.error('棋譜読み込みエラー:', error);
+            alert('棋譜ファイルの読み込みに失敗しました: ' + error.message);
+        }
+    }
+
+    /**
+     * 棋譜データの情報を表示
+     */
+    showKifuDataInfo(kifuData) {
+        const infoElement = document.getElementById('kifuDataInfo');
+        if (!infoElement) return;
+
+        const gameModeNames = {
+            'human-vs-human': '人間 vs 人間',
+            'human-vs-ai': '人間 vs AI',
+            'ai-vs-ai': 'AI vs AI'
+        };
+
+        const winnerNames = {
+            'sente': '先手',
+            'gote': '後手',
+            null: '引き分け'
+        };
+
+        const timestamp = kifuData.timestamp 
+            ? new Date(kifuData.timestamp).toLocaleString('ja-JP')
+            : '不明';
+
+        const gameMode = gameModeNames[kifuData.gameMode] || kifuData.gameMode || '不明';
+        const winner = winnerNames[kifuData.winner] || '不明';
+        const moveCount = kifuData.moves ? kifuData.moves.length : 0;
+
+        // 既存の棋譜があるかチェック
+        const hasExistingKifu = this.moveHistory.length > 0;
+        const existingKifuWarning = hasExistingKifu 
+            ? `<div style="margin-bottom: 15px; padding: 10px; background: #fff3cd; border: 2px solid #ffc107; border-radius: 5px; color: #856404;">
+                <strong>⚠️ 注意:</strong> 既存の棋譜（${this.moveHistory.length}手）があります。この棋譜を読み込むと、既存の棋譜は上書きされます。
+            </div>`
+            : '';
+
+        infoElement.innerHTML = `
+            ${existingKifuWarning}
+            <div style="margin-bottom: 15px;">
+                <strong>手数:</strong> ${moveCount}手
+            </div>
+            <div style="margin-bottom: 15px;">
+                <strong>ゲームモード:</strong> ${gameMode}
+            </div>
+            <div style="margin-bottom: 15px;">
+                <strong>勝者:</strong> ${winner}
+            </div>
+            <div style="margin-bottom: 15px;">
+                <strong>保存日時:</strong> ${timestamp}
+            </div>
+            <div style="margin-bottom: 15px;">
+                <strong>バージョン:</strong> ${kifuData.version || '不明'}
+            </div>
+        `;
+
+        // モーダルを表示
+        this.showKifuDataModal();
+        
+        // モーダル表示後に棋譜リストを表示（確実に要素が存在するように）
+        setTimeout(() => {
+            this.showKifuDataList(kifuData.moves);
+        }, 10);
+    }
+
+    /**
+     * 棋譜リストを表示
+     */
+    showKifuDataList(moves) {
+        const listElement = document.getElementById('kifuDataList');
+        if (!listElement) {
+            console.error('kifuDataList要素が見つかりません');
+            return;
+        }
+
+        console.log('棋譜リスト表示開始:', { movesCount: moves ? moves.length : 0, moves: moves });
+
+        if (!moves || moves.length === 0) {
+            listElement.innerHTML = '<div style="text-align: center; color: #666;">棋譜がありません</div>';
+            return;
+        }
+
+        try {
+            const formattedList = this.formatFullKifuList(moves);
+            if (!formattedList || formattedList.trim() === '') {
+                listElement.innerHTML = '<div style="text-align: center; color: #666;">棋譜のフォーマットに失敗しました</div>';
+                return;
+            }
+            
+            listElement.innerHTML = `
+                <div style="margin-bottom: 10px; font-weight: bold; font-size: 1.1em;">全棋譜リスト（${moves.length}手）</div>
+                <div style="font-size: 0.9em; line-height: 1.6;">
+                    ${formattedList}
+                </div>
+            `;
+            console.log('棋譜リスト表示完了');
+        } catch (error) {
+            console.error('棋譜リスト表示エラー:', error);
+            listElement.innerHTML = `<div style="text-align: center; color: #e74c3c;">棋譜リストの表示中にエラーが発生しました: ${error.message}</div>`;
+        }
+    }
+
+    /**
+     * 全棋譜リストをフォーマット
+     */
+    formatFullKifuList(moves) {
+        if (!moves || moves.length === 0) return 'なし';
+
+        return moves.map((move, index) => {
+            try {
+                let moveText = '';
+                if (move.type === 'move') {
+                    if (move.fromRow === undefined || move.fromCol === undefined || 
+                        move.toRow === undefined || move.toCol === undefined) {
+                        return `<div style="padding: 3px 0; border-bottom: 1px solid #eee; color: #e74c3c;">${index + 1}. 無効な手データ</div>`;
+                    }
+                    const fromPos = this.positionToNotation(move.fromRow, move.fromCol);
+                    const toPos = this.positionToNotation(move.toRow, move.toCol);
+                    const pieceName = this.getPieceName(move.piece || '');
+                    const promote = move.promoted ? '成' : '';
+                    moveText = `${index + 1}. ${move.turn === PLAYER.SENTE ? '先手' : '後手'} ${pieceName}${fromPos}→${toPos}${promote}`;
+                    if (move.captured) {
+                        moveText += ` (${this.getPieceName(move.captured)}を取る)`;
+                    }
+                } else if (move.type === 'drop') {
+                    if (move.toRow === undefined || move.toCol === undefined) {
+                        return `<div style="padding: 3px 0; border-bottom: 1px solid #eee; color: #e74c3c;">${index + 1}. 無効な打ちデータ</div>`;
+                    }
+                    const toPos = this.positionToNotation(move.toRow, move.toCol);
+                    const pieceName = this.getPieceName(move.piece || '');
+                    moveText = `${index + 1}. ${move.turn === PLAYER.SENTE ? '先手' : '後手'} ${pieceName}打${toPos}`;
+                } else {
+                    moveText = `${index + 1}. 不明な手の種類`;
+                }
+                return `<div style="padding: 3px 0; border-bottom: 1px solid #eee;">${moveText}</div>`;
+            } catch (error) {
+                console.error(`棋譜フォーマットエラー (手${index + 1}):`, error, move);
+                return `<div style="padding: 3px 0; border-bottom: 1px solid #eee; color: #e74c3c;">${index + 1}. エラー: ${error.message}</div>`;
+            }
+        }).join('');
+    }
+
+    /**
+     * 棋譜のプレビューをフォーマット
+     */
+    formatKifuPreview(moves) {
+        if (!moves || moves.length === 0) return 'なし';
+        
+        return moves.map((move, index) => {
+            if (move.type === 'move') {
+                const fromPos = this.positionToNotation(move.fromRow, move.fromCol);
+                const toPos = this.positionToNotation(move.toRow, move.toCol);
+                const pieceName = this.getPieceName(move.piece);
+                const promote = move.promoted ? '成' : '';
+                return `${index + 1}. ${move.turn === PLAYER.SENTE ? '先手' : '後手'} ${pieceName}${fromPos}→${toPos}${promote}`;
+            } else if (move.type === 'drop') {
+                const toPos = this.positionToNotation(move.toRow, move.toCol);
+                const pieceName = this.getPieceName(move.piece);
+                return `${index + 1}. ${move.turn === PLAYER.SENTE ? '先手' : '後手'} ${pieceName}打${toPos}`;
+            }
+            return '';
+        }).join('<br>');
+    }
+
+    /**
+     * 棋譜データモーダルを表示
+     */
+    showKifuDataModal() {
+        const modal = document.getElementById('kifuDataModal');
+        if (modal) {
+            modal.classList.remove('hidden');
+        }
+    }
+
+    /**
+     * 棋譜データモーダルを非表示
+     */
+    hideKifuDataModal() {
+        const modal = document.getElementById('kifuDataModal');
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+        // ファイル入力をリセット
+        const input = document.getElementById('uploadKifuInput');
+        if (input) {
+            input.value = '';
+        }
+        this.pendingKifuData = null;
+    }
+
+    /**
+     * プレビューした棋譜データを読み込む
+     */
+    loadKifuFromPreview() {
+        if (!this.pendingKifuData) {
+            alert('読み込む棋譜データがありません');
+            return;
+        }
+
+        const kifuData = this.pendingKifuData;
+
+        // 既存の棋譜がある場合は差し替える（既に警告は表示済み）
+        // ゲームをリセットして既存の棋譜をクリア
+        this.board = this.initializeBoard();
+        this.currentTurn = PLAYER.SENTE;
+        this.selectedCell = null;
+        this.selectedCapturedPiece = null;
+        this.pendingPromotion = null;
+        this.capturedPieces = { sente: [], gote: [] };
+        this.gameOver = false;
+        this.winner = kifuData.winner || null;
+        this.moveHistory = []; // 既存の棋譜をクリア
+        this.currentMoveIndex = -1;
+        this.isReplaying = false;
+        this.positionHistory = [];
+        this.checkHistory = [];
+
+        // 棋譜を読み込んで再生
+        this.isReplaying = true;
+        // 棋譜をmoveHistoryに直接追加（isReplaying中はrecordMoveが呼ばれないため）
+        this.moveHistory = kifuData.moves.map(move => ({ ...move }));
+        
+        for (let i = 0; i < kifuData.moves.length; i++) {
+            // 各手を再生する前にcurrentMoveIndexを更新（updateUI内でupdateMoveControlsが呼ばれるため）
+            this.currentMoveIndex = i;
+            const move = kifuData.moves[i];
+            if (move.type === 'move') {
+                this.movePiece(move.fromRow, move.fromCol, move.toRow, move.toCol, move.promoted);
+            } else if (move.type === 'drop') {
+                this.dropPiece(move.piece, move.toRow, move.toCol);
+            }
+        }
+        // 最後の手の位置に設定
+        this.currentMoveIndex = kifuData.moves.length - 1;
+        this.isReplaying = false;
+
+        // ゲームモードを復元
+        if (kifuData.gameMode) {
+            const gameModeSelect = document.getElementById('gameMode');
+            if (gameModeSelect) {
+                gameModeSelect.value = kifuData.gameMode;
+                this.gameMode = kifuData.gameMode;
+            }
+        }
+
+        this.updateUI();
+        this.updateMoveHistoryDisplay();
+        this.updateMoveControls();
+
+        if (this.winner) {
+            this.showReplayMode();
+        }
+
+        this.hideKifuDataModal();
+        alert('棋譜を読み込みました');
     }
 }
 
