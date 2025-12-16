@@ -7,17 +7,20 @@ import {
     MINIMAX_MOVE_LIMIT,
     ENEMY_TERRITORY_SENTE,
     ENEMY_TERRITORY_GOTE,
-    OLLAMA_CONFIG
+    OLLAMA_CONFIG,
+    USI_CONFIG
 } from './constants.js';
+import { USIClient } from './usi.js';
 
 /**
  * 将棋AIプレイヤークラス
  */
 export class ShogiAI {
-    constructor(level = AI_LEVEL.INTERMEDIATE, ollamaEndpoint = null, ollamaModel = null) {
+    constructor(level = AI_LEVEL.INTERMEDIATE, ollamaEndpoint = null, ollamaModel = null, usiServerUrl = null) {
         this.level = level;
         this.pieceValues = PIECE_VALUES;
         this.configureOllama(ollamaEndpoint, ollamaModel);
+        this.configureUSI(usiServerUrl);
     }
 
     configureOllama(ollamaEndpoint, ollamaModel) {
@@ -25,6 +28,12 @@ export class ShogiAI {
         this.ollamaEndpoint = (endpoint || '').replace(/\/$/, '');
         this.ollamaModel = ollamaModel ?? OLLAMA_CONFIG.MODEL;
         this.timeoutMs = OLLAMA_CONFIG.TIMEOUT ?? 30000;
+    }
+
+    configureUSI(usiServerUrl) {
+        const serverUrl = usiServerUrl ?? USI_CONFIG.SERVER_URL;
+        this.usiClient = this.level === AI_LEVEL.USI ? new USIClient(serverUrl) : null;
+        this.usiTimeout = USI_CONFIG.TIMEOUT ?? 30000;
     }
 
     /**
@@ -43,6 +52,10 @@ export class ShogiAI {
                 return this.getAdvancedMove(allMoves, game, turn);
             case AI_LEVEL.OLLAMA:
                 // Ollamaは非同期なので、ここではフォールバック
+                // 実際の呼び出しはgetBestMoveAsync()を使用
+                return this.getIntermediateMove(allMoves, game, turn);
+            case AI_LEVEL.USI:
+                // USIは非同期なので、ここではフォールバック
                 // 実際の呼び出しはgetBestMoveAsync()を使用
                 return this.getIntermediateMove(allMoves, game, turn);
             default:
@@ -307,28 +320,49 @@ export class ShogiAI {
     }
 
     /**
-     * 非同期で最善手を取得（Ollama用）
+     * 非同期で最善手を取得（Ollama/USI用）
      */
     async getBestMoveAsync(game, turn) {
-        if (this.level !== AI_LEVEL.OLLAMA) {
+        if (this.level === AI_LEVEL.OLLAMA) {
+            const allMoves = game.getAllPossibleMoves(turn);
+            if (allMoves.length === 0) return null;
+            
+            try {
+                console.info('[Ollama] fetch start', {
+                    endpoint: this.ollamaEndpoint,
+                    model: this.ollamaModel,
+                    turn,
+                    moves: allMoves.length
+                });
+                const move = await this.getOllamaMove(allMoves, game, turn);
+                return move || this.getIntermediateMove(allMoves, game, turn);
+            } catch (error) {
+                console.error('Ollama呼び出しエラー:', error);
+                return this.getIntermediateMove(allMoves, game, turn);
+            }
+        } else if (this.level === AI_LEVEL.USI) {
+            const allMoves = game.getAllPossibleMoves(turn);
+            if (allMoves.length === 0) return null;
+            
+            try {
+                if (!this.usiClient) {
+                    throw new Error('USIクライアントが初期化されていません');
+                }
+                
+                console.info('[USI] 最善手取得開始', {
+                    serverUrl: this.usiClient.serverUrl,
+                    turn
+                });
+                
+                const move = await this.usiClient.getBestMove(game, turn, this.usiTimeout);
+                return move || this.getIntermediateMove(allMoves, game, turn);
+            } catch (error) {
+                console.error('USI呼び出しエラー:', error);
+                // エラー時は中級AIにフォールバック
+                return this.getIntermediateMove(allMoves, game, turn);
+            }
+        } else {
             return this.getBestMove(game, turn);
-        }
-        
-        const allMoves = game.getAllPossibleMoves(turn);
-        if (allMoves.length === 0) return null;
-        
-        try {
-            console.info('[Ollama] fetch start', {
-                endpoint: this.ollamaEndpoint,
-                model: this.ollamaModel,
-                turn,
-                moves: allMoves.length
-            });
-            const move = await this.getOllamaMove(allMoves, game, turn);
-            return move || this.getIntermediateMove(allMoves, game, turn);
-        } catch (error) {
-            console.error('Ollama呼び出しエラー:', error);
-            return this.getIntermediateMove(allMoves, game, turn);
         }
     }
 

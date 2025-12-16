@@ -31,7 +31,8 @@ export class ShogiGame {
         };
         this.gameMode = GAME_MODE.HUMAN_VS_HUMAN;
         this.aiLevel = AI_LEVEL.INTERMEDIATE;
-        this.ai = new ShogiAI(this.aiLevel);
+        const usiServerUrl = document.getElementById('usiServerUrl')?.value;
+        this.ai = new ShogiAI(this.aiLevel, null, null, usiServerUrl);
         this.gameOver = false;
         this.winner = null;
         this.pendingPromotion = null;
@@ -86,7 +87,14 @@ export class ShogiGame {
             },
             'aiLevel': (e) => {
                 this.aiLevel = e.target.value;
-                this.ai = new ShogiAI(this.aiLevel);
+                const usiServerUrl = document.getElementById('usiServerUrl')?.value;
+                this.ai = new ShogiAI(this.aiLevel, null, null, usiServerUrl);
+                
+                // USI設定の表示/非表示
+                const usiConfig = document.getElementById('usiConfig');
+                if (usiConfig) {
+                    usiConfig.style.display = this.aiLevel === AI_LEVEL.USI ? 'flex' : 'none';
+                }
             },
             'newGameBtn': () => {
                 this.exitReplayMode();
@@ -625,12 +633,17 @@ export class ShogiGame {
         if (this.isAITurn() && !this.gameOver && !this.isReplaying) {
             this.showAIThinking();
             
-            // Ollamaの場合は非同期処理
-            if (this.ai.level === AI_LEVEL.OLLAMA) {
-                console.info('[Game] Ollama async move start', {
+            // Ollama/USIの場合は非同期処理
+            if (this.ai.level === AI_LEVEL.OLLAMA || this.ai.level === AI_LEVEL.USI) {
+                const levelName = this.ai.level === AI_LEVEL.OLLAMA ? 'Ollama' : 'USI';
+                console.info(`[Game] ${levelName} async move start`, {
                     turn: this.currentTurn,
-                    endpoint: this.ai.ollamaEndpoint,
-                    model: this.ai.ollamaModel
+                    ...(this.ai.level === AI_LEVEL.OLLAMA ? {
+                        endpoint: this.ai.ollamaEndpoint,
+                        model: this.ai.ollamaModel
+                    } : {
+                        serverUrl: this.ai.usiClient?.serverUrl
+                    })
                 });
                 this.ai.getBestMoveAsync(this, this.currentTurn).then(move => {
                     if (this.gameOver || this.isReplaying) {
@@ -1218,7 +1231,8 @@ export class ShogiGame {
         const aiLevelSelect = document.getElementById('aiLevel');
         if (aiLevelSelect) {
             this.aiLevel = aiLevelSelect.value;
-            this.ai = new ShogiAI(this.aiLevel);
+            const usiServerUrl = document.getElementById('usiServerUrl')?.value;
+            this.ai = new ShogiAI(this.aiLevel, null, null, usiServerUrl);
         }
         
         // PieceMovesを更新

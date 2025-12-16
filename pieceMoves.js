@@ -124,17 +124,21 @@ export class PieceMoves {
             
             const target = this.board[newRow][col];
             if (target) {
-                // 自駒ならそこは進めずブロック
+                // 駒がある場合
                 const isSameSide = (this.isSente(piece) && this.isSente(target)) ||
                                    (this.isGote(piece) && this.isGote(target));
-                if (!isSameSide) {
+                if (isSameSide) {
+                    // 自駒ならそこは進めず、その直前でブロック（何も追加しない）
+                    break;
+                } else {
                     // 相手駒なら取れるマスとして追加してブロック
                     moves.push([newRow, col]);
+                    break;
                 }
-                break;
+            } else {
+                // 空のマスなら追加して続行
+                moves.push([newRow, col]);
             }
-            
-            moves.push([newRow, col]);
         }
         return moves;
     }
