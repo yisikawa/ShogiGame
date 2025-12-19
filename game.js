@@ -308,9 +308,61 @@ export class ShogiGame {
     handlePromotionChoice(promote) {
         if (!this.pendingPromotion) return;
         
-        const { fromRow, fromCol, toRow, toCol, piece } = this.pendingPromotion;
+        const { fromRow, fromCol, toRow, toCol, piece, captured } = this.pendingPromotion;
         this.hidePromoteModal();
-        this.movePiece(fromRow, fromCol, toRow, toCol, promote);
+        
+        // 既に駒の移動と駒取りは完了しているため、成りの処理のみを行う
+        if (promote === true) {
+            // 成る場合
+            const currentPiece = this.board[toRow][toCol];
+            if (currentPiece && !currentPiece.includes('+')) {
+                this.board[toRow][toCol] = '+' + currentPiece;
+            }
+        }
+        // 成らない場合は何もしない（既に移動済み）
+        
+        // 棋譜に記録（成りの選択を含む）
+        if (!this.isReplaying) {
+            this.recordMove({
+                type: 'move',
+                fromRow,
+                fromCol,
+                toRow,
+                toCol,
+                piece: piece,
+                promoted: promote === true,
+                captured: captured ? captured.replace('+', '') : null
+            });
+        }
+        
+        // 王が取られたかチェック
+        const capturedPiece = captured ? captured.replace('+', '').toLowerCase() : null;
+        if (capturedPiece === PIECE_TYPE.KING) {
+            this.gameOver = true;
+            this.winner = this.currentTurn;
+            this.showReplayMode();
+            this.pendingPromotion = null;
+            return;
+        }
+        
+        // 成り選択をクリア
+        this.pendingPromotion = null;
+        
+        // 手番を切り替え
+        this.switchTurn();
+        this.updateUI();
+        
+        // 局面を記録（千日手判定用）
+        if (!this.isReplaying) {
+            this.recordPosition();
+        }
+        
+        // ゲーム終了チェックとAIの手
+        if (!this.gameOver) {
+            this.checkRepetition(); // 千日手チェック
+            this.checkGameEnd();
+            this.checkAndMakeAIMove();
+        }
     }
 
     /**
