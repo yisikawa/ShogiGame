@@ -32,7 +32,13 @@ export class ShogiGame {
         };
         this.gameMode = GAME_MODE.HUMAN_VS_HUMAN;
         this.aiLevel = AI_LEVEL.INTERMEDIATE;
+<<<<<<< HEAD
         this.ai = this.createAI();
+=======
+        const usiServerUrlElement = document.getElementById('usiServerUrl');
+        const usiServerUrl = usiServerUrlElement ? usiServerUrlElement.value : null;
+        this.ai = new ShogiAI(this.aiLevel, null, null, usiServerUrl);
+>>>>>>> USI_Engine
         this.gameOver = false;
         this.winner = null;
         this.pendingPromotion = null;
@@ -41,6 +47,11 @@ export class ShogiGame {
         this.isReplaying = false;
         this.positionHistory = []; // 局面履歴（千日手判定用）
         this.checkHistory = []; // 王手履歴（連続王手の千日手判定用）
+        this.pendingKifuData = null; // プレビュー中の棋譜データ
+        this.aiInProgress = false; // AI思考中フラグ（AI vs AIでの重複思考防止）
+        this.aiStopped = false; // USIエンジン停止時の思考停止フラグ
+        this.aiMovePromise = null; // 現在進行中のAI思考のPromise（重複防止用）
+        this.aiMoveTimeout = null; // AI思考のタイムアウトID（クリーンアップ用）
         
         // 駒の移動ロジックを初期化
         this.pieceMoves = new PieceMoves(
@@ -95,12 +106,23 @@ export class ShogiGame {
             },
             'aiLevel': (e) => {
                 this.aiLevel = e.target.value;
+<<<<<<< HEAD
                 this.ai = this.createAI();
             },
             'ollamaModel': (e) => {
                 // Ollamaモデルが変更された場合、Ollamaモードの場合はAIを再作成
                 if (this.aiLevel === AI_LEVEL.OLLAMA) {
                     this.ai = this.createAI();
+=======
+                const usiServerUrlElement = document.getElementById('usiServerUrl');
+        const usiServerUrl = usiServerUrlElement ? usiServerUrlElement.value : null;
+                this.ai = new ShogiAI(this.aiLevel, null, null, usiServerUrl);
+                
+                // USI設定の表示/非表示
+                const usiConfig = document.getElementById('usiConfig');
+                if (usiConfig) {
+                    usiConfig.style.display = this.aiLevel === AI_LEVEL.USI ? 'flex' : 'none';
+>>>>>>> USI_Engine
                 }
             },
             'newGameBtn': () => {
@@ -113,13 +135,29 @@ export class ShogiGame {
             'prevMoveBtn': () => this.goToPreviousMove(),
             'nextMoveBtn': () => this.goToNextMove(),
             'firstMoveBtn': () => this.goToFirstMove(),
-            'lastMoveBtn': () => this.goToLastMove()
+            'lastMoveBtn': () => this.goToLastMove(),
+            'downloadKifuBtn': () => this.downloadKifu(),
+            'uploadKifuBtn': () => {
+                const input = document.getElementById('uploadKifuInput');
+                if (input) input.click();
+            },
+            'uploadKifuInput': (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    this.previewKifuData(file);
+                }
+            },
+            'loadKifuBtn': () => this.loadKifuFromPreview(),
+            'cancelKifuBtn': () => this.hideKifuDataModal()
         };
 
         Object.entries(handlers).forEach(([id, handler]) => {
             const element = document.getElementById(id);
             if (element) {
-                const eventType = id.includes('Btn') ? 'click' : 'change';
+                let eventType = 'click';
+                if (id.includes('Input') || id.includes('select') || id === 'gameMode' || id === 'aiLevel') {
+                    eventType = 'change';
+                }
                 element.addEventListener(eventType, handler);
             }
         });
@@ -243,7 +281,10 @@ export class ShogiGame {
         if (!this.gameOver) {
             this.checkRepetition(); // 千日手チェック
             this.checkGameEnd();
-            this.checkAndMakeAIMove();
+            // UI更新を待ってからAI思考を開始（重複呼び出し防止）
+            setTimeout(() => {
+                this.checkAndMakeAIMove();
+            }, UI_UPDATE_DELAY);
         }
     }
     
@@ -297,9 +338,61 @@ export class ShogiGame {
     handlePromotionChoice(promote) {
         if (!this.pendingPromotion) return;
         
-        const { fromRow, fromCol, toRow, toCol, piece } = this.pendingPromotion;
+        const { fromRow, fromCol, toRow, toCol, piece, captured } = this.pendingPromotion;
         this.hidePromoteModal();
-        this.movePiece(fromRow, fromCol, toRow, toCol, promote);
+        
+        // 既に駒の移動と駒取りは完了しているため、成りの処理のみを行う
+        if (promote === true) {
+            // 成る場合
+            const currentPiece = this.board[toRow][toCol];
+            if (currentPiece && !currentPiece.includes('+')) {
+                this.board[toRow][toCol] = '+' + currentPiece;
+            }
+        }
+        // 成らない場合は何もしない（既に移動済み）
+        
+        // 棋譜に記録（成りの選択を含む）
+        if (!this.isReplaying) {
+            this.recordMove({
+                type: 'move',
+                fromRow,
+                fromCol,
+                toRow,
+                toCol,
+                piece: piece,
+                promoted: promote === true,
+                captured: captured ? captured.replace('+', '') : null
+            });
+        }
+        
+        // 王が取られたかチェック
+        const capturedPiece = captured ? captured.replace('+', '').toLowerCase() : null;
+        if (capturedPiece === PIECE_TYPE.KING) {
+            this.gameOver = true;
+            this.winner = this.currentTurn;
+            this.showReplayMode();
+            this.pendingPromotion = null;
+            return;
+        }
+        
+        // 成り選択をクリア
+        this.pendingPromotion = null;
+        
+        // 手番を切り替え
+        this.switchTurn();
+        this.updateUI();
+        
+        // 局面を記録（千日手判定用）
+        if (!this.isReplaying) {
+            this.recordPosition();
+        }
+        
+        // ゲーム終了チェックとAIの手
+        if (!this.gameOver) {
+            this.checkRepetition(); // 千日手チェック
+            this.checkGameEnd();
+            this.checkAndMakeAIMove();
+        }
     }
 
     /**
@@ -350,7 +443,10 @@ export class ShogiGame {
         if (!this.gameOver) {
             this.checkRepetition(); // 千日手チェック
             this.checkGameEnd();
-            this.checkAndMakeAIMove();
+            // UI更新を待ってからAI思考を開始（重複呼び出し防止）
+            setTimeout(() => {
+                this.checkAndMakeAIMove();
+            }, UI_UPDATE_DELAY);
         }
         
         return true;
@@ -608,70 +704,215 @@ export class ShogiGame {
 
     /**
      * AIのターンかどうか
+     * 
+     * 人間対AIモードの場合：
+     * - 先手（SENTE）のターン: 人間が先手を担当（AIではない）
+     * - 後手（GOTE）のターン: AIが後手を担当
+     * 
+     * AI対AIモードの場合：
+     * - 先手（SENTE）のターン: AIが先手を担当
+     * - 後手（GOTE）のターン: AIが後手を担当
      */
     isAITurn() {
         if (this.gameMode === GAME_MODE.HUMAN_VS_HUMAN) return false;
+        // 人間対AIモード: 先手は人間、後手はAI
         if (this.gameMode === GAME_MODE.HUMAN_VS_AI && this.currentTurn === PLAYER.SENTE) return false;
         if (this.gameMode === GAME_MODE.HUMAN_VS_AI && this.currentTurn === PLAYER.GOTE) return true;
+        // AI対AIモード: 先手も後手もAIが担当
         if (this.gameMode === GAME_MODE.AI_VS_AI) return true;
         return false;
     }
 
     /**
      * AIの手を打つ
+     * 
+     * 人間対AIモードの場合：
+     * - 後手（GOTE）のターンのみAIが思考（先手は人間）
+     * 
+     * AI対AIモードの場合：
+     * - 先手（SENTE）のターン: AIが先手の手を思考
+     * - 後手（GOTE）のターン: AIが後手の手を思考
      */
     checkAndMakeAIMove() {
-        if (this.isAITurn() && !this.gameOver && !this.isReplaying) {
-            this.showAIThinking();
-            
-            // Ollamaの場合は非同期処理
+        // 既にAI思考中なら待機（AI vs AIでの重複リクエスト防止）
+        if (this.aiInProgress || this.aiMovePromise) {
+            console.debug('[Game] AI思考が既に進行中のため、新しい思考をスキップ', {
+                aiInProgress: this.aiInProgress,
+                hasPromise: !!this.aiMovePromise,
+                currentTurn: this.currentTurn
+            });
+            return;
+        }
+        
+        if (!this.isAITurn() || this.gameOver || this.isReplaying) {
+            return;
+        }
+        
+        if (this.aiStopped) {
+            console.warn('[Game] AIが停止状態のため思考をスキップ（USIエンジン停止）');
+            return;
+        }
+        
+        // フラグを設定（重複呼び出し防止）
+        this.aiInProgress = true;
+        
+        // 人間対AIモードまたはAI対AIモードの場合、どちらの手番かを明確にログ出力
+        const playerName = this.currentTurn === PLAYER.SENTE ? '先手' : '後手';
+        const gameModeInfo = this.gameMode === GAME_MODE.AI_VS_AI 
+            ? `[AI対AIモード - ${playerName}AI思考中]` 
+            : this.gameMode === GAME_MODE.HUMAN_VS_AI
+            ? `[人間対AIモード - ${playerName}AI思考中（AIは後手）]`
+            : '';
+        
+        this.showAIThinking();
+        
+        // Ollama/USIの場合は非同期処理
+        if (this.ai.level === AI_LEVEL.OLLAMA || this.ai.level === AI_LEVEL.USI) {
+            const levelName = this.ai.level === AI_LEVEL.OLLAMA ? 'Ollama' : 'USI';
+            const logInfo = {
+                turn: this.currentTurn,
+                player: playerName,
+                gameMode: this.gameMode
+            };
             if (this.ai.level === AI_LEVEL.OLLAMA) {
-                console.info('[Game] Ollama async move start', {
-                    turn: this.currentTurn,
-                    endpoint: this.ai.ollamaEndpoint,
-                    model: this.ai.ollamaModel
-                });
-                this.ai.getBestMoveAsync(this, this.currentTurn).then(move => {
-                    if (this.gameOver || this.isReplaying) {
-                        this.hideAIThinking();
-                        return;
-                    }
-                    
-                    if (move) {
-                        if (move.type === 'move') {
-                            this.movePiece(move.fromRow, move.fromCol, move.toRow, move.toCol);
-                        } else if (move.type === 'drop') {
-                            this.dropPiece(move.piece, move.toRow, move.toCol);
-                        }
-                    } else {
-                        this.hideAIThinking();
-                    }
-                }).catch(error => {
-                    console.error('AI手取得エラー:', error);
-                    this.hideAIThinking();
-                });
+                logInfo.endpoint = this.ai.ollamaEndpoint;
+                logInfo.model = this.ai.ollamaModel;
             } else {
-                // 通常のAIは従来通り
-                const thinkingTime = AI_THINKING_TIME.MIN + Math.random() * (AI_THINKING_TIME.MAX - AI_THINKING_TIME.MIN);
-                
-                setTimeout(() => {
-                    if (this.gameOver || this.isReplaying) {
-                        this.hideAIThinking();
-                        return;
-                    }
-                    
-                    const move = this.ai.getBestMove(this, this.currentTurn);
-                    if (move) {
-                        if (move.type === 'move') {
-                            this.movePiece(move.fromRow, move.fromCol, move.toRow, move.toCol);
-                        } else if (move.type === 'drop') {
-                            this.dropPiece(move.piece, move.toRow, move.toCol);
-                        }
-                    } else {
-                        this.hideAIThinking();
-                    }
-                }, thinkingTime);
+                logInfo.serverUrl = this.ai.usiClient && this.ai.usiClient.serverUrl;
             }
+            console.info(`[Game] ${gameModeInfo} ${levelName} async move start`, logInfo);
+            
+            // 非同期処理を開始し、Promiseを保存（重複防止用）
+            const currentTurn = this.currentTurn;
+            this.aiMovePromise = this.ai.getBestMoveAsync(this, currentTurn)
+                    .then(move => {
+                        // ゲーム状態が変わっていないか確認
+                        if (this.gameOver || this.isReplaying || this.currentTurn !== currentTurn) {
+                            console.warn('[Game] ゲーム状態が変更されたため、AIの手をスキップ', {
+                                gameOver: this.gameOver,
+                                isReplaying: this.isReplaying,
+                                expectedTurn: currentTurn,
+                                actualTurn: this.currentTurn
+                            });
+                            this.cleanupAIMove();
+                            return;
+                        }
+                        
+                        if (move) {
+                            const playerName = currentTurn === PLAYER.SENTE ? '先手' : '後手';
+                            const gameModeInfo = this.gameMode === GAME_MODE.AI_VS_AI 
+                                ? `[AI対AIモード - ${playerName}AI]` 
+                                : '[AI]';
+                            console.info(`[Game] ${gameModeInfo} の手を適用`, {
+                                type: move.type,
+                                player: playerName,
+                                turn: currentTurn,
+                                move: move.type === 'move' 
+                                    ? `${move.fromRow},${move.fromCol} → ${move.toRow},${move.toCol}`
+                                    : `${move.piece}打 → ${move.toRow},${move.toCol}`
+                            });
+                            
+                            // 手を適用する前にクリーンアップ（次の思考の準備）
+                            // 注意: movePiece/dropPiece内で次のAI思考が開始されるため、
+                            // ここではクリーンアップのみ実行（aiInProgressフラグをリセット）
+                            this.aiInProgress = false;
+                            this.hideAIThinking();
+                            
+                            // 手を適用（movePiece/dropPiece内で次のAI思考が開始される）
+                            if (move.type === 'move') {
+                                this.movePiece(move.fromRow, move.fromCol, move.toRow, move.toCol);
+                            } else if (move.type === 'drop') {
+                                this.dropPiece(move.piece, move.toRow, move.toCol);
+                            }
+                        } else {
+                            const playerName = currentTurn === PLAYER.SENTE ? '先手' : '後手';
+                            const gameModeInfo = this.gameMode === GAME_MODE.AI_VS_AI 
+                                ? `[AI対AIモード - ${playerName}AI]` 
+                                : '[AI]';
+                            console.warn(`[Game] ${gameModeInfo} が手を返しませんでした（投了またはエラー）`, {
+                                player: playerName,
+                                turn: currentTurn
+                            });
+                            this.cleanupAIMove();
+                        }
+                    })
+                    .catch(error => {
+                        const playerName = currentTurn === PLAYER.SENTE ? '先手' : '後手';
+                        const gameModeInfo = this.gameMode === GAME_MODE.AI_VS_AI 
+                            ? `[AI対AIモード - ${playerName}AI]` 
+                            : '[AI]';
+                        console.error(`[Game] ${gameModeInfo} 手取得エラー:`, {
+                            error: error.message,
+                            stack: error.stack,
+                            level: this.ai.level,
+                            player: playerName,
+                            turn: currentTurn
+                        });
+                        
+                        this.cleanupAIMove();
+                        
+                        if (this.ai.level === AI_LEVEL.USI && error.message && error.message.includes('エンジン')) {
+                            this.aiStopped = true;
+                            console.error('[Game] USIエンジン停止を検知。AIを停止します。', { error: error.message });
+                        }
+                    })
+                    .finally(() => {
+                        // Promiseをクリア
+                        this.aiMovePromise = null;
+                    });
+        } else {
+            // 通常のAIは従来通り
+            const playerName = this.currentTurn === PLAYER.SENTE ? '先手' : '後手';
+            const gameModeInfo = this.gameMode === GAME_MODE.AI_VS_AI 
+                ? `[AI対AIモード - ${playerName}AI思考中]` 
+                : '';
+            const thinkingTime = AI_THINKING_TIME.MIN + Math.random() * (AI_THINKING_TIME.MAX - AI_THINKING_TIME.MIN);
+            
+            console.info(`[Game] ${gameModeInfo} 通常AI思考開始`, {
+                player: playerName,
+                turn: this.currentTurn,
+                thinkingTime: `${thinkingTime}ms`
+            });
+            
+            const currentTurn = this.currentTurn;
+            this.aiMoveTimeout = setTimeout(() => {
+                // ゲーム状態が変わっていないか確認
+                if (this.gameOver || this.isReplaying || this.currentTurn !== currentTurn) {
+                    console.warn('[Game] ゲーム状態が変更されたため、AIの手をスキップ', {
+                        gameOver: this.gameOver,
+                        isReplaying: this.isReplaying,
+                        expectedTurn: currentTurn,
+                        actualTurn: this.currentTurn
+                    });
+                    this.cleanupAIMove();
+                    return;
+                }
+                
+                const move = this.ai.getBestMove(this, currentTurn);
+                if (move) {
+                    const appliedPlayerName = currentTurn === PLAYER.SENTE ? '先手' : '後手';
+                    const appliedGameModeInfo = this.gameMode === GAME_MODE.AI_VS_AI 
+                        ? `[AI対AIモード - ${appliedPlayerName}AI]` 
+                        : '[AI]';
+                    console.info(`[Game] ${appliedGameModeInfo} の手を適用`, {
+                        player: appliedPlayerName,
+                        turn: currentTurn,
+                        type: move.type
+                    });
+                    // 手を適用する前にクリーンアップ（次の思考の準備）
+                    this.aiInProgress = false;
+                    this.hideAIThinking();
+                    
+                    // 手を適用（movePiece/dropPiece内で次のAI思考が開始される）
+                    if (move.type === 'move') {
+                        this.movePiece(move.fromRow, move.fromCol, move.toRow, move.toCol);
+                    } else if (move.type === 'drop') {
+                        this.dropPiece(move.piece, move.toRow, move.toCol);
+                    }
+                } else {
+                    this.cleanupAIMove();
+                }
+            }, thinkingTime);
         }
     }
 
@@ -693,6 +934,25 @@ export class ShogiGame {
         if (thinkingElement) {
             thinkingElement.classList.add('hidden');
         }
+    }
+    
+    /**
+     * AI思考のクリーンアップ（フラグとタイムアウトのリセット）
+     */
+    cleanupAIMove() {
+        this.hideAIThinking();
+        this.aiInProgress = false;
+        
+        // タイムアウトをクリア
+        if (this.aiMoveTimeout) {
+            clearTimeout(this.aiMoveTimeout);
+            this.aiMoveTimeout = null;
+        }
+        
+        // Promiseはfinallyブロックでクリアされるが、エラー時や早期リターン時の安全性のため
+        // ここでもクリア（ただし、進行中のPromiseをキャンセルしないよう注意）
+        // 通常はfinallyブロックで処理されるため、ここではコメントアウト
+        // this.aiMovePromise = null;
     }
 
     /**
@@ -1091,11 +1351,21 @@ export class ShogiGame {
         const lastBtn = document.getElementById('lastMoveBtn');
         const counter = document.getElementById('moveCounter');
         
+        const totalMoves = this.moveHistory.length;
+        const currentMove = this.currentMoveIndex + 1;
+        
         if (prevBtn) prevBtn.disabled = this.currentMoveIndex < 0;
-        if (nextBtn) nextBtn.disabled = this.currentMoveIndex >= this.moveHistory.length - 1;
+        if (nextBtn) nextBtn.disabled = this.currentMoveIndex >= totalMoves - 1;
         if (firstBtn) firstBtn.disabled = this.currentMoveIndex < 0;
-        if (lastBtn) lastBtn.disabled = this.currentMoveIndex >= this.moveHistory.length - 1;
-        if (counter) counter.textContent = `手数: ${this.currentMoveIndex + 1} / ${this.moveHistory.length}`;
+        if (lastBtn) lastBtn.disabled = this.currentMoveIndex >= totalMoves - 1;
+        if (counter) {
+            // 手数が0の場合は0/0と表示、それ以外は現在の手数/総手数を表示
+            if (totalMoves === 0) {
+                counter.textContent = `手数: 0 / 0`;
+            } else {
+                counter.textContent = `手数: ${currentMove} / ${totalMoves}`;
+            }
+        }
     }
     
     /**
@@ -1149,14 +1419,13 @@ export class ShogiGame {
      * 手を記録
      */
     recordMove(moveData) {
-        const moveRecord = {
-            ...moveData,
+        const moveRecord = Object.assign({}, moveData, {
             turn: this.currentTurn,
             capturedPiecesBefore: {
-                sente: [...this.capturedPieces.sente],
-                gote: [...this.capturedPieces.gote]
+                sente: this.capturedPieces.sente.slice(),
+                gote: this.capturedPieces.gote.slice()
             }
-        };
+        });
         
         // 現在の位置より後ろの手を削除（分岐を削除）
         this.moveHistory = this.moveHistory.slice(0, this.currentMoveIndex + 1);
@@ -1189,6 +1458,10 @@ export class ShogiGame {
      * リセット
      */
     reset() {
+        // 進行中のAI思考をクリーンアップ
+        this.cleanupAIMove();
+        this.aiMovePromise = null;
+        
         this.board = this.initializeBoard();
         this.currentTurn = PLAYER.SENTE;
         this.selectedCell = null;
@@ -1207,7 +1480,13 @@ export class ShogiGame {
         const aiLevelSelect = document.getElementById('aiLevel');
         if (aiLevelSelect) {
             this.aiLevel = aiLevelSelect.value;
+<<<<<<< HEAD
             this.ai = this.createAI();
+=======
+            const usiServerUrlElement = document.getElementById('usiServerUrl');
+        const usiServerUrl = usiServerUrlElement ? usiServerUrlElement.value : null;
+            this.ai = new ShogiAI(this.aiLevel, null, null, usiServerUrl);
+>>>>>>> USI_Engine
         }
         
         // PieceMovesを更新
@@ -1220,8 +1499,329 @@ export class ShogiGame {
         
         // AI対AIモードの場合は最初からAIが手を打つ
         if (this.gameMode === GAME_MODE.AI_VS_AI) {
-            setTimeout(() => this.checkAndMakeAIMove(), UI_UPDATE_DELAY);
+            // クリーンアップを確実に実行してから次の思考を開始
+            this.cleanupAIMove();
+            setTimeout(() => {
+                if (!this.gameOver && !this.isReplaying) {
+                    this.checkAndMakeAIMove();
+                }
+            }, UI_UPDATE_DELAY * 2);
         }
+    }
+
+    /**
+     * 棋譜をJSONデータに変換
+     */
+    exportKifuToJSON() {
+        const kifuData = {
+            version: '1.0',
+            timestamp: new Date().toISOString(),
+            gameMode: this.gameMode,
+            winner: this.winner,
+            moves: this.moveHistory,
+            initialBoard: INITIAL_BOARD.map(row => [...row])
+        };
+        return JSON.stringify(kifuData, null, 2);
+    }
+
+    /**
+     * 棋譜をJSONファイルとしてダウンロード
+     */
+    downloadKifu() {
+        if (this.moveHistory.length === 0) {
+            alert('棋譜がありません');
+            return;
+        }
+
+        const jsonData = this.exportKifuToJSON();
+        const blob = new Blob([jsonData], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `shogi-kifu-${Date.now()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    /**
+     * アップロードされた棋譜データをプレビュー表示
+     */
+    async previewKifuData(file) {
+        try {
+            const text = await file.text();
+            const kifuData = JSON.parse(text);
+
+            // バリデーション
+            if (!kifuData.moves || !Array.isArray(kifuData.moves)) {
+                throw new Error('無効な棋譜ファイルです');
+            }
+
+            // データを一時保存
+            this.pendingKifuData = kifuData;
+
+            // 情報を表示
+            this.showKifuDataInfo(kifuData);
+        } catch (error) {
+            console.error('棋譜読み込みエラー:', error);
+            alert('棋譜ファイルの読み込みに失敗しました: ' + error.message);
+        }
+    }
+
+    /**
+     * 棋譜データの情報を表示
+     */
+    showKifuDataInfo(kifuData) {
+        const infoElement = document.getElementById('kifuDataInfo');
+        if (!infoElement) return;
+
+        const gameModeNames = {
+            'human-vs-human': '人間 vs 人間',
+            'human-vs-ai': '人間 vs AI',
+            'ai-vs-ai': 'AI vs AI'
+        };
+
+        const winnerNames = {
+            'sente': '先手',
+            'gote': '後手',
+            null: '引き分け'
+        };
+
+        const timestamp = kifuData.timestamp 
+            ? new Date(kifuData.timestamp).toLocaleString('ja-JP')
+            : '不明';
+
+        const gameMode = gameModeNames[kifuData.gameMode] || kifuData.gameMode || '不明';
+        const winner = winnerNames[kifuData.winner] || '不明';
+        const moveCount = kifuData.moves ? kifuData.moves.length : 0;
+
+        // 既存の棋譜があるかチェック
+        const hasExistingKifu = this.moveHistory.length > 0;
+        const existingKifuWarning = hasExistingKifu 
+            ? `<div style="margin-bottom: 15px; padding: 10px; background: #fff3cd; border: 2px solid #ffc107; border-radius: 5px; color: #856404;">
+                <strong>⚠️ 注意:</strong> 既存の棋譜（${this.moveHistory.length}手）があります。この棋譜を読み込むと、既存の棋譜は上書きされます。
+            </div>`
+            : '';
+
+        infoElement.innerHTML = `
+            ${existingKifuWarning}
+            <div style="margin-bottom: 15px;">
+                <strong>手数:</strong> ${moveCount}手
+            </div>
+            <div style="margin-bottom: 15px;">
+                <strong>ゲームモード:</strong> ${gameMode}
+            </div>
+            <div style="margin-bottom: 15px;">
+                <strong>勝者:</strong> ${winner}
+            </div>
+            <div style="margin-bottom: 15px;">
+                <strong>保存日時:</strong> ${timestamp}
+            </div>
+            <div style="margin-bottom: 15px;">
+                <strong>バージョン:</strong> ${kifuData.version || '不明'}
+            </div>
+        `;
+
+        // モーダルを表示
+        this.showKifuDataModal();
+        
+        // モーダル表示後に棋譜リストを表示（確実に要素が存在するように）
+        setTimeout(() => {
+            this.showKifuDataList(kifuData.moves);
+        }, 10);
+    }
+
+    /**
+     * 棋譜リストを表示
+     */
+    showKifuDataList(moves) {
+        const listElement = document.getElementById('kifuDataList');
+        if (!listElement) {
+            console.error('kifuDataList要素が見つかりません');
+            return;
+        }
+
+        console.log('棋譜リスト表示開始:', { movesCount: moves ? moves.length : 0, moves: moves });
+
+        if (!moves || moves.length === 0) {
+            listElement.innerHTML = '<div style="text-align: center; color: #666;">棋譜がありません</div>';
+            return;
+        }
+
+        try {
+            const formattedList = this.formatFullKifuList(moves);
+            if (!formattedList || formattedList.trim() === '') {
+                listElement.innerHTML = '<div style="text-align: center; color: #666;">棋譜のフォーマットに失敗しました</div>';
+                return;
+            }
+            
+            listElement.innerHTML = `
+                <div style="margin-bottom: 10px; font-weight: bold; font-size: 1.1em;">全棋譜リスト（${moves.length}手）</div>
+                <div style="font-size: 0.9em; line-height: 1.6;">
+                    ${formattedList}
+                </div>
+            `;
+            console.log('棋譜リスト表示完了');
+        } catch (error) {
+            console.error('棋譜リスト表示エラー:', error);
+            listElement.innerHTML = `<div style="text-align: center; color: #e74c3c;">棋譜リストの表示中にエラーが発生しました: ${error.message}</div>`;
+        }
+    }
+
+    /**
+     * 全棋譜リストをフォーマット
+     */
+    formatFullKifuList(moves) {
+        if (!moves || moves.length === 0) return 'なし';
+
+        return moves.map((move, index) => {
+            try {
+                let moveText = '';
+                if (move.type === 'move') {
+                    if (move.fromRow === undefined || move.fromCol === undefined || 
+                        move.toRow === undefined || move.toCol === undefined) {
+                        return `<div style="padding: 3px 0; border-bottom: 1px solid #eee; color: #e74c3c;">${index + 1}. 無効な手データ</div>`;
+                    }
+                    const fromPos = this.positionToNotation(move.fromRow, move.fromCol);
+                    const toPos = this.positionToNotation(move.toRow, move.toCol);
+                    const pieceName = this.getPieceName(move.piece || '');
+                    const promote = move.promoted ? '成' : '';
+                    moveText = `${index + 1}. ${move.turn === PLAYER.SENTE ? '先手' : '後手'} ${pieceName}${fromPos}→${toPos}${promote}`;
+                    if (move.captured) {
+                        moveText += ` (${this.getPieceName(move.captured)}を取る)`;
+                    }
+                } else if (move.type === 'drop') {
+                    if (move.toRow === undefined || move.toCol === undefined) {
+                        return `<div style="padding: 3px 0; border-bottom: 1px solid #eee; color: #e74c3c;">${index + 1}. 無効な打ちデータ</div>`;
+                    }
+                    const toPos = this.positionToNotation(move.toRow, move.toCol);
+                    const pieceName = this.getPieceName(move.piece || '');
+                    moveText = `${index + 1}. ${move.turn === PLAYER.SENTE ? '先手' : '後手'} ${pieceName}打${toPos}`;
+                } else {
+                    moveText = `${index + 1}. 不明な手の種類`;
+                }
+                return `<div style="padding: 3px 0; border-bottom: 1px solid #eee;">${moveText}</div>`;
+            } catch (error) {
+                console.error(`棋譜フォーマットエラー (手${index + 1}):`, error, move);
+                return `<div style="padding: 3px 0; border-bottom: 1px solid #eee; color: #e74c3c;">${index + 1}. エラー: ${error.message}</div>`;
+            }
+        }).join('');
+    }
+
+    /**
+     * 棋譜のプレビューをフォーマット
+     */
+    formatKifuPreview(moves) {
+        if (!moves || moves.length === 0) return 'なし';
+        
+        return moves.map((move, index) => {
+            if (move.type === 'move') {
+                const fromPos = this.positionToNotation(move.fromRow, move.fromCol);
+                const toPos = this.positionToNotation(move.toRow, move.toCol);
+                const pieceName = this.getPieceName(move.piece);
+                const promote = move.promoted ? '成' : '';
+                return `${index + 1}. ${move.turn === PLAYER.SENTE ? '先手' : '後手'} ${pieceName}${fromPos}→${toPos}${promote}`;
+            } else if (move.type === 'drop') {
+                const toPos = this.positionToNotation(move.toRow, move.toCol);
+                const pieceName = this.getPieceName(move.piece);
+                return `${index + 1}. ${move.turn === PLAYER.SENTE ? '先手' : '後手'} ${pieceName}打${toPos}`;
+            }
+            return '';
+        }).join('<br>');
+    }
+
+    /**
+     * 棋譜データモーダルを表示
+     */
+    showKifuDataModal() {
+        const modal = document.getElementById('kifuDataModal');
+        if (modal) {
+            modal.classList.remove('hidden');
+        }
+    }
+
+    /**
+     * 棋譜データモーダルを非表示
+     */
+    hideKifuDataModal() {
+        const modal = document.getElementById('kifuDataModal');
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+        // ファイル入力をリセット
+        const input = document.getElementById('uploadKifuInput');
+        if (input) {
+            input.value = '';
+        }
+        this.pendingKifuData = null;
+    }
+
+    /**
+     * プレビューした棋譜データを読み込む
+     */
+    loadKifuFromPreview() {
+        if (!this.pendingKifuData) {
+            alert('読み込む棋譜データがありません');
+            return;
+        }
+
+        const kifuData = this.pendingKifuData;
+
+        // 既存の棋譜がある場合は差し替える（既に警告は表示済み）
+        // ゲームをリセットして既存の棋譜をクリア
+        this.board = this.initializeBoard();
+        this.currentTurn = PLAYER.SENTE;
+        this.selectedCell = null;
+        this.selectedCapturedPiece = null;
+        this.pendingPromotion = null;
+        this.capturedPieces = { sente: [], gote: [] };
+        this.gameOver = false;
+        this.winner = kifuData.winner || null;
+        this.moveHistory = []; // 既存の棋譜をクリア
+        this.currentMoveIndex = -1;
+        this.isReplaying = false;
+        this.positionHistory = [];
+        this.checkHistory = [];
+
+        // 棋譜を読み込んで再生
+        this.isReplaying = true;
+        // 棋譜をmoveHistoryに直接追加（isReplaying中はrecordMoveが呼ばれないため）
+        this.moveHistory = kifuData.moves.map(move => Object.assign({}, move));
+        
+        for (let i = 0; i < kifuData.moves.length; i++) {
+            // 各手を再生する前にcurrentMoveIndexを更新（updateUI内でupdateMoveControlsが呼ばれるため）
+            this.currentMoveIndex = i;
+            const move = kifuData.moves[i];
+            if (move.type === 'move') {
+                this.movePiece(move.fromRow, move.fromCol, move.toRow, move.toCol, move.promoted);
+            } else if (move.type === 'drop') {
+                this.dropPiece(move.piece, move.toRow, move.toCol);
+            }
+        }
+        // 最後の手の位置に設定
+        this.currentMoveIndex = kifuData.moves.length - 1;
+        this.isReplaying = false;
+
+        // ゲームモードを復元
+        if (kifuData.gameMode) {
+            const gameModeSelect = document.getElementById('gameMode');
+            if (gameModeSelect) {
+                gameModeSelect.value = kifuData.gameMode;
+                this.gameMode = kifuData.gameMode;
+            }
+        }
+
+        this.updateUI();
+        this.updateMoveHistoryDisplay();
+        this.updateMoveControls();
+
+        if (this.winner) {
+            this.showReplayMode();
+        }
+
+        this.hideKifuDataModal();
+        alert('棋譜を読み込みました');
     }
 }
 

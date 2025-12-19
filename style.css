@@ -630,3 +630,31 @@ h1 {
     }
 }
 
+.usi-config {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 10px;
+    background: #f0f8ff;
+    border-radius: 5px;
+    border: 1px solid #b0d4f1;
+}
+
+.usi-config label {
+    font-weight: bold;
+    color: #333;
+    font-size: 0.9em;
+}
+
+.usi-config input {
+    padding: 6px 10px;
+    border: 2px solid #ddd;
+    border-radius: 5px;
+    font-size: 0.9em;
+}
+
+.usi-config input:hover {
+    border-color: #667eea;
+}
+

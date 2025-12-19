@@ -22,13 +22,20 @@ export const AI_LEVEL = {
     BEGINNER: 'beginner',
     INTERMEDIATE: 'intermediate',
     ADVANCED: 'advanced',
-    OLLAMA: 'ollama' // Ollama LLMを使用
+    OLLAMA: 'ollama', // Ollama LLMを使用
+    USI: 'usi' // USIプロトコルを使用
 };
 
 // Ollama設定
 export const OLLAMA_CONFIG = {
     ENDPOINT: 'http://localhost:11434', // Ollama APIエンドポイント
     MODEL: 'gemma3:1b', // デフォルトモデル
+    TIMEOUT: 30000 // タイムアウト（ミリ秒）
+};
+
+// USI設定
+export const USI_CONFIG = {
+    SERVER_URL: 'http://localhost:8080', // USIサーバーのURL
     TIMEOUT: 30000 // タイムアウト（ミリ秒）
 };
 

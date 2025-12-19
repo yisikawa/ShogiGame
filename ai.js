@@ -2,22 +2,26 @@
 
 import {
     PIECE_VALUES,
+    PIECE_NAMES,
     AI_LEVEL,
     MINIMAX_DEPTH,
     MINIMAX_MOVE_LIMIT,
     ENEMY_TERRITORY_SENTE,
     ENEMY_TERRITORY_GOTE,
-    OLLAMA_CONFIG
+    OLLAMA_CONFIG,
+    USI_CONFIG
 } from './constants.js';
+import { USIClient } from './usi.js';
 
 /**
  * 将棋AIプレイヤークラス
  */
 export class ShogiAI {
-    constructor(level = AI_LEVEL.INTERMEDIATE, ollamaEndpoint = null, ollamaModel = null) {
+    constructor(level = AI_LEVEL.INTERMEDIATE, ollamaEndpoint = null, ollamaModel = null, usiServerUrl = null) {
         this.level = level;
         this.pieceValues = PIECE_VALUES;
         this.configureOllama(ollamaEndpoint, ollamaModel);
+        this.configureUSI(usiServerUrl);
     }
 
     configureOllama(ollamaEndpoint, ollamaModel) {
@@ -25,6 +29,12 @@ export class ShogiAI {
         this.ollamaEndpoint = (endpoint || '').replace(/\/$/, '');
         this.ollamaModel = ollamaModel ?? OLLAMA_CONFIG.MODEL;
         this.timeoutMs = OLLAMA_CONFIG.TIMEOUT ?? 30000;
+    }
+
+    configureUSI(usiServerUrl) {
+        const serverUrl = usiServerUrl ?? USI_CONFIG.SERVER_URL;
+        this.usiClient = this.level === AI_LEVEL.USI ? new USIClient(serverUrl) : null;
+        this.usiTimeout = USI_CONFIG.TIMEOUT ?? 30000;
     }
 
     /**
@@ -45,6 +55,10 @@ export class ShogiAI {
                 // Ollamaは非同期なので、ここではフォールバック
                 // 実際の呼び出しはgetBestMoveAsync()を使用
                 return this.getIntermediateMove(allMoves, game, turn);
+            case AI_LEVEL.USI:
+                // USIは非同期なので、ここではフォールバック
+                // 実際の呼び出しはgetBestMoveAsync()を使用
+                return this.getIntermediateMove(allMoves, game, turn);
             default:
                 return this.getIntermediateMove(allMoves, game, turn);
         }
@@ -54,25 +68,41 @@ export class ShogiAI {
      * 初級AI: ランダムまたは簡単な評価
      */
     getBeginnerMove(allMoves, game, turn) {
+        const RANDOM_THRESHOLD = 0.5;
+        
         // 50%の確率でランダム、50%で簡単な評価
-        if (Math.random() < 0.5) {
-            const randomIndex = Math.floor(Math.random() * allMoves.length);
-            return allMoves[randomIndex];
+        if (Math.random() < RANDOM_THRESHOLD) {
+            return this.getRandomMove(allMoves);
         }
         
         // 簡単な評価：取れる駒がある場合は優先
+        return this.getBestCaptureMove(allMoves, game) || this.getRandomMove(allMoves);
+    }
+
+    /**
+     * ランダムな手を取得
+     */
+    getRandomMove(allMoves) {
+        if (allMoves.length === 0) return null;
+        const randomIndex = Math.floor(Math.random() * allMoves.length);
+        return allMoves[randomIndex];
+    }
+
+    /**
+     * 取れる駒がある手を優先的に取得
+     */
+    getBestCaptureMove(allMoves, game) {
         let bestMove = null;
         let bestScore = -Infinity;
         
         for (const move of allMoves) {
-            let score = 0;
-            if (move.type === 'move') {
-                const targetPiece = game.board[move.toRow][move.toCol];
-                if (targetPiece) {
-                    const pieceType = targetPiece.replace('+', '');
-                    score = this.pieceValues[pieceType] || 0;
-                }
-            }
+            if (move.type !== 'move') continue;
+            
+            const targetPiece = game.board[move.toRow][move.toCol];
+            if (!targetPiece) continue;
+            
+            const pieceType = targetPiece.replace('+', '').toLowerCase();
+            const score = this.pieceValues[pieceType] || 0;
             
             if (score > bestScore) {
                 bestScore = score;
@@ -80,18 +110,27 @@ export class ShogiAI {
             }
         }
         
-        return bestMove || allMoves[Math.floor(Math.random() * allMoves.length)];
+        return bestMove;
     }
 
     /**
      * 中級AI: 基本的な評価関数
      */
     getIntermediateMove(allMoves, game, turn) {
+        if (allMoves.length === 0) return null;
+        
+        return this.selectBestMove(allMoves, (move) => this.evaluateMove(move, game, turn));
+    }
+
+    /**
+     * 評価関数に基づいて最善手を選択
+     */
+    selectBestMove(allMoves, evaluateFn) {
         let bestMove = null;
         let bestScore = -Infinity;
         
         for (const move of allMoves) {
-            const score = this.evaluateMove(move, game, turn);
+            const score = evaluateFn(move);
             if (score > bestScore) {
                 bestScore = score;
                 bestMove = move;
@@ -134,37 +173,57 @@ export class ShogiAI {
      * 手の評価
      */
     evaluateMove(move, game, turn) {
-        let score = 0;
-        
         if (move.type === 'move') {
-            const targetPiece = game.board[move.toRow][move.toCol];
-            // 取れる駒の価値
-            if (targetPiece) {
-                const pieceType = targetPiece.replace('+', '');
-                score += this.pieceValues[pieceType] || 0;
-            }
-            
-            // 自分の駒の位置評価
-            const fromPiece = game.board[move.fromRow][move.fromCol];
-            if (fromPiece) {
-                // 前進を評価（簡易版）
-                if (turn === 'sente' && move.toRow < move.fromRow) {
-                    score += 10;
-                } else if (turn === 'gote' && move.toRow > move.fromRow) {
-                    score += 10;
-                }
-            }
+            return this.evaluateMoveMove(move, game, turn);
         } else if (move.type === 'drop') {
-            // 持ち駒を打つ場合の評価
-            const pieceValue = this.pieceValues[move.piece] || 0;
-            score += pieceValue * 0.1; // 持ち駒を打つのは少しマイナス評価
-            
-            // 敵陣に打つ場合はプラス評価
-            if (turn === 'sente' && move.toRow < ENEMY_TERRITORY_SENTE) {
-                score += 20;
-            } else if (turn === 'gote' && move.toRow > ENEMY_TERRITORY_GOTE) {
-                score += 20;
+            return this.evaluateMoveDrop(move, game, turn);
+        }
+        return 0;
+    }
+
+    /**
+     * 移動手の評価
+     */
+    evaluateMoveMove(move, game, turn) {
+        let score = 0;
+        const targetPiece = game.board[move.toRow][move.toCol];
+        
+        // 取れる駒の価値
+        if (targetPiece) {
+            const pieceType = targetPiece.replace('+', '').toLowerCase();
+            score += this.pieceValues[pieceType] || 0;
+        }
+        
+        // 前進を評価
+        const fromPiece = game.board[move.fromRow][move.fromCol];
+        if (fromPiece) {
+            const ADVANCE_BONUS = 10;
+            if (turn === 'sente' && move.toRow < move.fromRow) {
+                score += ADVANCE_BONUS;
+            } else if (turn === 'gote' && move.toRow > move.fromRow) {
+                score += ADVANCE_BONUS;
             }
+        }
+        
+        return score;
+    }
+
+    /**
+     * 打ち手の評価
+     */
+    evaluateMoveDrop(move, game, turn) {
+        const DROP_PENALTY_FACTOR = 0.1;
+        const ENEMY_TERRITORY_BONUS = 20;
+        
+        let score = 0;
+        const pieceValue = this.pieceValues[move.piece] || 0;
+        score += pieceValue * DROP_PENALTY_FACTOR; // 持ち駒を打つのは少しマイナス評価
+        
+        // 敵陣に打つ場合はプラス評価
+        if (turn === 'sente' && move.toRow < ENEMY_TERRITORY_SENTE) {
+            score += ENEMY_TERRITORY_BONUS;
+        } else if (turn === 'gote' && move.toRow > ENEMY_TERRITORY_GOTE) {
+            score += ENEMY_TERRITORY_BONUS;
         }
         
         return score;
@@ -218,34 +277,53 @@ export class ShogiAI {
      * 局面評価
      */
     evaluatePosition(game, myTurn) {
+        const CAPTURED_PIECE_FACTOR = 0.8;
+        
+        let score = this.evaluateBoardPieces(game, myTurn);
+        score += this.evaluateCapturedPieces(game, myTurn, CAPTURED_PIECE_FACTOR);
+        
+        return score;
+    }
+
+    /**
+     * 盤上の駒を評価
+     */
+    evaluateBoardPieces(game, myTurn) {
         let score = 0;
         
-        // 盤上の駒の価値
         for (let row = 0; row < 9; row++) {
             for (let col = 0; col < 9; col++) {
                 const piece = game.board[row][col];
-                if (piece) {
-                    const pieceType = piece.replace('+', '');
-                    const value = this.pieceValues[pieceType] || 0;
-                    
-                    if ((myTurn === 'sente' && game.isSente(piece)) ||
-                        (myTurn === 'gote' && game.isGote(piece))) {
-                        score += value;
-                    } else {
-                        score -= value;
-                    }
-                }
+                if (!piece) continue;
+                
+                const pieceType = piece.replace('+', '').toLowerCase();
+                const value = this.pieceValues[pieceType] || 0;
+                
+                const isMyPiece = (myTurn === 'sente' && game.isSente(piece)) ||
+                                  (myTurn === 'gote' && game.isGote(piece));
+                
+                score += isMyPiece ? value : -value;
             }
         }
         
-        // 持ち駒の価値
+        return score;
+    }
+
+    /**
+     * 持ち駒を評価
+     */
+    evaluateCapturedPieces(game, myTurn, factor) {
+        let score = 0;
+        const opponent = myTurn === 'sente' ? 'gote' : 'sente';
+        
+        // 自分の持ち駒
         game.capturedPieces[myTurn].forEach(piece => {
-            score += (this.pieceValues[piece] || 0) * 0.8;
+            score += (this.pieceValues[piece] || 0) * factor;
         });
         
-        const opponent = myTurn === 'sente' ? 'gote' : 'sente';
+        // 相手の持ち駒（マイナス評価）
         game.capturedPieces[opponent].forEach(piece => {
-            score -= (this.pieceValues[piece] || 0) * 0.8;
+            score -= (this.pieceValues[piece] || 0) * factor;
         });
         
         return score;
@@ -276,60 +354,174 @@ export class ShogiAI {
      */
     makeMove(game, move, turn) {
         if (move.type === 'move') {
-            const piece = game.board[move.fromRow][move.fromCol];
-            const captured = game.board[move.toRow][move.toCol];
-            
-            if (captured) {
-                const capturedPiece = captured.replace('+', '').toLowerCase();
-                game.capturedPieces[turn].push(capturedPiece);
-            }
-            
-            game.board[move.toRow][move.toCol] = piece;
-            game.board[move.fromRow][move.fromCol] = null;
-            
-            // 成りの判定（AIは基本的に成る）
-            const canPromote = (turn === 'sente' && (move.toRow < ENEMY_TERRITORY_SENTE || move.fromRow < ENEMY_TERRITORY_SENTE)) ||
-                              (turn === 'gote' && (move.toRow > ENEMY_TERRITORY_GOTE || move.fromRow > ENEMY_TERRITORY_GOTE));
-            if (canPromote && !piece.includes('+') && piece.toLowerCase() !== 'k' && piece.toLowerCase() !== 'g') {
-                // AIは基本的に成る（評価関数で最適な選択をしている）
-                game.board[move.toRow][move.toCol] = '+' + piece;
-            }
+            this.makeMoveMove(game, move, turn);
         } else if (move.type === 'drop') {
-            const pieceType = move.piece.toLowerCase();
-            const droppedPiece = turn === 'sente' ? pieceType.toUpperCase() : pieceType;
-            game.board[move.toRow][move.toCol] = droppedPiece;
-            
-            const index = game.capturedPieces[turn].indexOf(pieceType);
-            if (index > -1) {
-                game.capturedPieces[turn].splice(index, 1);
-            }
+            this.makeMoveDrop(game, move, turn);
         }
     }
 
     /**
-     * 非同期で最善手を取得（Ollama用）
+     * 移動手を実行
      */
-    async getBestMoveAsync(game, turn) {
-        if (this.level !== AI_LEVEL.OLLAMA) {
-            return this.getBestMove(game, turn);
+    makeMoveMove(game, move, turn) {
+        const piece = game.board[move.fromRow][move.fromCol];
+        const captured = game.board[move.toRow][move.toCol];
+        
+        // 取った駒を持ち駒に追加
+        if (captured) {
+            const capturedPiece = captured.replace('+', '').toLowerCase();
+            game.capturedPieces[turn].push(capturedPiece);
         }
         
+        // 駒を移動
+        game.board[move.toRow][move.toCol] = piece;
+        game.board[move.fromRow][move.fromCol] = null;
+        
+        // 成りの判定（AIは基本的に成る）
+        if (this.shouldPromote(piece, move, turn)) {
+            game.board[move.toRow][move.toCol] = '+' + piece;
+        }
+    }
+
+    /**
+     * 打ち手を実行
+     */
+    makeMoveDrop(game, move, turn) {
+        const pieceType = move.piece.toLowerCase();
+        const droppedPiece = turn === 'sente' ? pieceType.toUpperCase() : pieceType;
+        game.board[move.toRow][move.toCol] = droppedPiece;
+        
+        // 持ち駒から削除
+        const index = game.capturedPieces[turn].indexOf(pieceType);
+        if (index > -1) {
+            game.capturedPieces[turn].splice(index, 1);
+        }
+    }
+
+    /**
+     * 成るべきかどうかを判定
+     */
+    shouldPromote(piece, move, turn) {
+        if (piece.includes('+')) return false; // 既に成っている
+        if (piece.toLowerCase() === 'k' || piece.toLowerCase() === 'g') return false; // 王と金は成れない
+        
+        const canPromote = (turn === 'sente' && (move.toRow < ENEMY_TERRITORY_SENTE || move.fromRow < ENEMY_TERRITORY_SENTE)) ||
+                          (turn === 'gote' && (move.toRow > ENEMY_TERRITORY_GOTE || move.fromRow > ENEMY_TERRITORY_GOTE));
+        
+        return canPromote;
+    }
+
+    /**
+     * 非同期で最善手を取得（Ollama/USI用）
+     */
+    async getBestMoveAsync(game, turn) {
         const allMoves = game.getAllPossibleMoves(turn);
         if (allMoves.length === 0) return null;
         
+        if (this.level === AI_LEVEL.OLLAMA) {
+            return this.getOllamaMoveWithFallback(allMoves, game, turn);
+        } else if (this.level === AI_LEVEL.USI) {
+            return this.getUSIMoveWithFallback(allMoves, game, turn);
+        } else {
+            return this.getBestMove(game, turn);
+        }
+    }
+
+    /**
+     * Ollamaを使用して手を取得（フォールバック付き）
+     */
+    async getOllamaMoveWithFallback(allMoves, game, turn) {
         try {
-            console.info('[Ollama] fetch start', {
-                endpoint: this.ollamaEndpoint,
-                model: this.ollamaModel,
-                turn,
-                moves: allMoves.length
-            });
+            this.logMoveStart('Ollama', { endpoint: this.ollamaEndpoint, model: this.ollamaModel, turn, moves: allMoves.length });
             const move = await this.getOllamaMove(allMoves, game, turn);
             return move || this.getIntermediateMove(allMoves, game, turn);
         } catch (error) {
-            console.error('Ollama呼び出しエラー:', error);
+            console.error('[AI] Ollama呼び出しエラー:', error);
             return this.getIntermediateMove(allMoves, game, turn);
         }
+    }
+
+    /**
+     * USIを使用して手を取得（フォールバック付き）
+     */
+    async getUSIMoveWithFallback(allMoves, game, turn) {
+        try {
+            if (!this.usiClient) {
+                throw new Error('USIクライアントが初期化されていません');
+            }
+            
+            const playerName = turn === 'sente' ? '先手' : '後手';
+            // 人間対AIモードの場合、USIエンジンは後手として思考する
+            const usiTurn = game.gameMode === 'human-vs-ai' ? 'gote' : turn;
+            const usiPlayerName = usiTurn === 'sente' ? '先手' : '後手';
+            
+            this.logMoveStart('USI', {
+                serverUrl: this.usiClient.serverUrl,
+                turn: turn,
+                player: playerName,
+                usiTurn: usiTurn,
+                usiPlayer: usiPlayerName,
+                gameMode: game.gameMode,
+                timeout: this.usiTimeout,
+                possibleMoves: allMoves.length
+            });
+            
+            const moveStartTime = performance.now();
+            const move = await this.usiClient.getBestMove(game, usiTurn, this.usiTimeout, game.gameMode);
+            const moveElapsed = (performance.now() - moveStartTime).toFixed(2);
+            
+            if (move) {
+                this.logMoveSuccess('USI', move, moveElapsed);
+            } else {
+                console.warn('[AI] USIが手を返しませんでした（フォールバック）', { elapsed: `${moveElapsed}ms` });
+            }
+            
+            return move || this.getIntermediateMove(allMoves, game, turn);
+        } catch (error) {
+            console.error('[AI] USI呼び出しエラー（フォールバック）', {
+                error: error.message,
+                stack: error.stack,
+                serverUrl: this.usiClient?.serverUrl,
+                turn
+            });
+            
+            const fallbackMove = this.getIntermediateMove(allMoves, game, turn);
+            this.logFallbackMove(fallbackMove);
+            return fallbackMove;
+        }
+    }
+
+    /**
+     * 手取得開始をログに記録
+     */
+    logMoveStart(type, context) {
+        const playerInfo = context.player ? ` (${context.player})` : '';
+        console.info(`[AI] ${type}最善手取得開始${playerInfo}`, context);
+    }
+
+    /**
+     * 手取得成功をログに記録
+     */
+    logMoveSuccess(type, move, elapsed) {
+        const moveDescription = move.type === 'move' 
+            ? `${move.fromRow},${move.fromCol} → ${move.toRow},${move.toCol}`
+            : `${move.piece}打 → ${move.toRow},${move.toCol}`;
+        
+        console.info(`[AI] ${type}最善手取得成功`, {
+            move: moveDescription,
+            elapsed: `${elapsed}ms`
+        });
+    }
+
+    /**
+     * フォールバック手をログに記録
+     */
+    logFallbackMove(move) {
+        const moveDescription = move.type === 'move' 
+            ? `${move.fromRow},${move.fromCol} → ${move.toRow},${move.toCol}`
+            : `${move.piece}打 → ${move.toRow},${move.toCol}`;
+        
+        console.info('[AI] 中級AIにフォールバック', { fallbackMove: moveDescription });
     }
 
     /**
@@ -452,22 +644,6 @@ ${movesText}
      * 駒の表示名を取得
      */
     getPieceName(piece) {
-        const PIECE_NAMES = {
-            'K': '王', 'k': '王',
-            'G': '金', 'g': '金',
-            'S': '銀', 's': '銀',
-            'N': '桂', 'n': '桂',
-            'L': '香', 'l': '香',
-            'B': '角', 'b': '角',
-            'R': '飛', 'r': '飛',
-            'P': '歩', 'p': '歩',
-            '+B': '馬', '+b': '馬',
-            '+R': '龍', '+r': '龍',
-            '+S': '全', '+s': '全',
-            '+N': '圭', '+n': '圭',
-            '+L': '杏', '+l': '杏',
-            '+P': 'と', '+p': 'と'
-        };
         return PIECE_NAMES[piece] || piece;
     }
 
