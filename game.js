@@ -32,13 +32,7 @@ export class ShogiGame {
         };
         this.gameMode = GAME_MODE.HUMAN_VS_HUMAN;
         this.aiLevel = AI_LEVEL.INTERMEDIATE;
-<<<<<<< HEAD
         this.ai = this.createAI();
-=======
-        const usiServerUrlElement = document.getElementById('usiServerUrl');
-        const usiServerUrl = usiServerUrlElement ? usiServerUrlElement.value : null;
-        this.ai = new ShogiAI(this.aiLevel, null, null, usiServerUrl);
->>>>>>> USI_Engine
         this.gameOver = false;
         this.winner = null;
         this.pendingPromotion = null;
@@ -88,7 +82,9 @@ export class ShogiGame {
     createAI() {
         const ollamaModelInput = document.getElementById('ollamaModel');
         const ollamaModel = ollamaModelInput ? ollamaModelInput.value.trim() || OLLAMA_CONFIG.MODEL : OLLAMA_CONFIG.MODEL;
-        return new ShogiAI(this.aiLevel, null, ollamaModel);
+        const usiServerUrlElement = document.getElementById('usiServerUrl');
+        const usiServerUrl = usiServerUrlElement ? usiServerUrlElement.value : null;
+        return new ShogiAI(this.aiLevel, null, ollamaModel, usiServerUrl);
     }
 
     /**
@@ -106,23 +102,30 @@ export class ShogiGame {
             },
             'aiLevel': (e) => {
                 this.aiLevel = e.target.value;
-<<<<<<< HEAD
                 this.ai = this.createAI();
-            },
-            'ollamaModel': (e) => {
-                // Ollamaモデルが変更された場合、Ollamaモードの場合はAIを再作成
-                if (this.aiLevel === AI_LEVEL.OLLAMA) {
-                    this.ai = this.createAI();
-=======
-                const usiServerUrlElement = document.getElementById('usiServerUrl');
-        const usiServerUrl = usiServerUrlElement ? usiServerUrlElement.value : null;
-                this.ai = new ShogiAI(this.aiLevel, null, null, usiServerUrl);
                 
                 // USI設定の表示/非表示
                 const usiConfig = document.getElementById('usiConfig');
                 if (usiConfig) {
                     usiConfig.style.display = this.aiLevel === AI_LEVEL.USI ? 'flex' : 'none';
->>>>>>> USI_Engine
+                }
+                
+                // Ollama設定の表示/非表示
+                const ollamaConfig = document.getElementById('ollamaConfig');
+                if (ollamaConfig) {
+                    ollamaConfig.style.display = this.aiLevel === AI_LEVEL.OLLAMA ? 'flex' : 'none';
+                }
+            },
+            'ollamaModel': (e) => {
+                // Ollamaモデルが変更された場合、Ollamaモードの場合はAIを再作成
+                if (this.aiLevel === AI_LEVEL.OLLAMA) {
+                    this.ai = this.createAI();
+                }
+            },
+            'usiServerUrl': (e) => {
+                // USIサーバーURLが変更された場合、USIモードの場合はAIを再作成
+                if (this.aiLevel === AI_LEVEL.USI) {
+                    this.ai = this.createAI();
                 }
             },
             'newGameBtn': () => {
@@ -1480,13 +1483,19 @@ export class ShogiGame {
         const aiLevelSelect = document.getElementById('aiLevel');
         if (aiLevelSelect) {
             this.aiLevel = aiLevelSelect.value;
-<<<<<<< HEAD
             this.ai = this.createAI();
-=======
-            const usiServerUrlElement = document.getElementById('usiServerUrl');
-        const usiServerUrl = usiServerUrlElement ? usiServerUrlElement.value : null;
-            this.ai = new ShogiAI(this.aiLevel, null, null, usiServerUrl);
->>>>>>> USI_Engine
+            
+            // USI設定の表示/非表示
+            const usiConfig = document.getElementById('usiConfig');
+            if (usiConfig) {
+                usiConfig.style.display = this.aiLevel === AI_LEVEL.USI ? 'flex' : 'none';
+            }
+            
+            // Ollama設定の表示/非表示
+            const ollamaConfig = document.getElementById('ollamaConfig');
+            if (ollamaConfig) {
+                ollamaConfig.style.display = this.aiLevel === AI_LEVEL.OLLAMA ? 'flex' : 'none';
+            }
         }
         
         // PieceMovesを更新
