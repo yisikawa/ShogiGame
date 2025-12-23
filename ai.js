@@ -446,6 +446,15 @@ export class ShogiAI {
      */
     async getUSIMoveWithFallback(allMoves, game, turn) {
         try {
+            // ゲーム終了状態をチェック
+            if (game.gameOver) {
+                console.info('[AI] ゲーム終了のため、USIリクエストをスキップします', {
+                    gameOver: game.gameOver,
+                    winner: game.winner
+                });
+                return null;
+            }
+            
             if (!this.usiClient) {
                 throw new Error('USIクライアントが初期化されていません');
             }

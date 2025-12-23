@@ -452,6 +452,18 @@ export class USIClient {
      * @param {string} gameMode - ゲームモード（オプション、人間対AIモードの判定用）
      */
     async getBestMove(game, turn, timeLimit = 5000, gameMode = null) {
+        // ゲーム終了状態をチェック
+        if (game && game.gameOver) {
+            const playerName = turn === 'sente' ? '先手' : '後手';
+            this.debugLog('info', 'ゲーム終了のため、USIリクエストをスキップします', {
+                gameOver: game.gameOver,
+                winner: game.winner,
+                turn: turn,
+                player: playerName
+            });
+            return null;
+        }
+        
         // エンジンが停止している場合、自動再起動を試みる
         if (this.engineDown) {
             if (this.autoRestartEnabled && !this.restartingEngine) {
