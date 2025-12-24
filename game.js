@@ -5,7 +5,6 @@ import {
     INITIAL_BOARD,
     PIECE_NAMES,
     PLAYER,
-    GAME_MODE,
     AI_LEVEL,
     ENEMY_TERRITORY_SENTE,
     ENEMY_TERRITORY_GOTE,
@@ -30,9 +29,10 @@ export class ShogiGame {
             sente: [],
             gote: []
         };
-        this.gameMode = GAME_MODE.HUMAN_VS_HUMAN;
-        this.aiLevel = AI_LEVEL.INTERMEDIATE;
-        this.ai = this.createAI();
+        this.aiLevelSente = AI_LEVEL.HUMAN;
+        this.aiLevelGote = AI_LEVEL.HUMAN;
+        this.aiSente = null;
+        this.aiGote = null;
         this.gameOver = false;
         this.winner = null;
         this.pendingPromotion = null;
@@ -74,17 +74,136 @@ export class ShogiGame {
         this.updateTurnIndicator();
         this.updateCapturedPieces();
         this.setupEventListeners();
+        this.scheduleAISettingsUpdate();
     }
 
     /**
      * AIインスタンスを作成
+     * @param {string} player - PLAYER.SENTE または PLAYER.GOTE
+     * @returns {ShogiAI|null} - AIインスタンス、または「人間」の場合はnull
      */
-    createAI() {
-        const ollamaModelInput = document.getElementById('ollamaModel');
-        const ollamaModel = ollamaModelInput ? ollamaModelInput.value.trim() || OLLAMA_CONFIG.MODEL : OLLAMA_CONFIG.MODEL;
-        const usiServerUrlElement = document.getElementById('usiServerUrl');
-        const usiServerUrl = usiServerUrlElement ? usiServerUrlElement.value : null;
-        return new ShogiAI(this.aiLevel, null, ollamaModel, usiServerUrl);
+    createAI(player) {
+        // 先手または後手のAIを作成
+        const isSente = player === PLAYER.SENTE;
+        const aiLevel = isSente ? this.aiLevelSente : this.aiLevelGote;
+        
+        // 「人間」の場合はnullを返す
+        if (aiLevel === AI_LEVEL.HUMAN) {
+            return null;
+        }
+        
+        // Ollamaモデルを取得
+        let ollamaModel = OLLAMA_CONFIG.MODEL;
+        if (isSente) {
+            const ollamaModelInput = document.getElementById('ollamaModelSente');
+            if (ollamaModelInput && ollamaModelInput.value.trim()) {
+                ollamaModel = ollamaModelInput.value.trim();
+            }
+        } else {
+            const ollamaModelInput = document.getElementById('ollamaModelGote');
+            if (ollamaModelInput && ollamaModelInput.value.trim()) {
+                ollamaModel = ollamaModelInput.value.trim();
+            }
+        }
+        
+        // USIサーバーURLを取得
+        let usiServerUrl = null;
+        if (isSente) {
+            const usiServerUrlElement = document.getElementById('usiServerUrlSente');
+            if (usiServerUrlElement && usiServerUrlElement.value.trim()) {
+                usiServerUrl = usiServerUrlElement.value.trim();
+            }
+        } else {
+            const usiServerUrlElement = document.getElementById('usiServerUrlGote');
+            if (usiServerUrlElement && usiServerUrlElement.value.trim()) {
+                usiServerUrl = usiServerUrlElement.value.trim();
+            }
+        }
+        
+        return new ShogiAI(aiLevel, null, ollamaModel, usiServerUrl);
+    }
+    
+    /**
+     * 現在の手番に応じたAIインスタンスを取得
+     */
+    getCurrentAI() {
+        if (this.currentTurn === PLAYER.SENTE) {
+            return this.aiSente;
+        } else {
+            return this.aiGote;
+        }
+    }
+    
+    /**
+     * 設定要素の表示/非表示を更新するヘルパー関数
+     * @param {HTMLElement} element - 更新する要素
+     * @param {boolean} shouldShow - 表示するかどうか
+     */
+    updateElementVisibility(element, shouldShow) {
+        if (element) {
+            const newDisplay = shouldShow ? 'flex' : 'none';
+            // インラインスタイルを直接設定（最も優先度が高い）
+            element.style.setProperty('display', newDisplay, 'important');
+        }
+    }
+    
+    /**
+     * AI設定UIの表示/非表示を更新
+     */
+    updateAISettingsVisibility() {
+        // AI設定コンテナは常に表示
+        const aiSettingsContainer = document.getElementById('aiSettingsContainer');
+        if (aiSettingsContainer) {
+            aiSettingsContainer.style.display = 'flex';
+        }
+        
+        // 先手と後手のAIレベル選択は常に表示
+        const aiLevelSenteContainer = document.getElementById('aiLevelSenteContainer');
+        const aiLevelGoteContainer = document.getElementById('aiLevelGoteContainer');
+        if (aiLevelSenteContainer) aiLevelSenteContainer.style.display = 'flex';
+        if (aiLevelGoteContainer) aiLevelGoteContainer.style.display = 'flex';
+        
+        // DOMから直接値を読み取る（this.aiLevelSente/Goteが更新されていない場合に備える）
+        const aiLevelSenteSelect = document.getElementById('aiLevelSente');
+        const aiLevelGoteSelect = document.getElementById('aiLevelGote');
+        const currentAiLevelSente = aiLevelSenteSelect ? aiLevelSenteSelect.value : this.aiLevelSente;
+        const currentAiLevelGote = aiLevelGoteSelect ? aiLevelGoteSelect.value : this.aiLevelGote;
+        
+        // 先手の設定表示/非表示
+        const ollamaConfigSente = document.getElementById('ollamaConfigSente');
+        const usiConfigSente = document.getElementById('usiConfigSente');
+        const shouldShowOllamaSente = currentAiLevelSente === AI_LEVEL.OLLAMA;
+        const shouldShowUsiSente = currentAiLevelSente === AI_LEVEL.USI;
+        this.updateElementVisibility(ollamaConfigSente, shouldShowOllamaSente);
+        this.updateElementVisibility(usiConfigSente, shouldShowUsiSente);
+        
+        // 後手の設定表示/非表示
+        const ollamaConfigGote = document.getElementById('ollamaConfigGote');
+        const usiConfigGote = document.getElementById('usiConfigGote');
+        const shouldShowOllamaGote = currentAiLevelGote === AI_LEVEL.OLLAMA;
+        const shouldShowUsiGote = currentAiLevelGote === AI_LEVEL.USI;
+        this.updateElementVisibility(ollamaConfigGote, shouldShowOllamaGote);
+        this.updateElementVisibility(usiConfigGote, shouldShowUsiGote);
+    }
+    
+    /**
+     * AI設定UIを遅延更新（確実に反映させるため）
+     */
+    scheduleAISettingsUpdate() {
+        // 即座に更新
+        this.updateAISettingsVisibility();
+        // 次のフレームでも更新（確実に反映させるため）
+        requestAnimationFrame(() => {
+            this.updateAISettingsVisibility();
+            // さらに次のフレームでも更新（念のため）
+            requestAnimationFrame(() => {
+                this.updateAISettingsVisibility();
+            });
+        });
+        // setTimeoutでも更新（DOM更新を確実に反映）
+        setTimeout(() => {
+            this.updateAISettingsVisibility();
+        }, 50);
     }
 
     /**
@@ -93,39 +212,52 @@ export class ShogiGame {
     setupEventListeners() {
         const handlers = {
             'resetBtn': () => this.reset(),
-            'gameMode': (e) => {
-                this.gameMode = e.target.value;
-                this.reset();
-                if (this.gameMode === GAME_MODE.AI_VS_AI) {
+            'aiLevelSente': (e) => {
+                this.aiLevelSente = e.target.value;
+                this.aiSente = this.createAI(PLAYER.SENTE);
+                // 即座に更新を試みる
+                this.updateAISettingsVisibility();
+                // 遅延更新も実行（確実に反映させるため）
+                this.scheduleAISettingsUpdate();
+                // AIが変更された場合、現在の手番が先手でAIの場合は思考を開始
+                if (this.currentTurn === PLAYER.SENTE && this.isAITurn()) {
                     setTimeout(() => this.checkAndMakeAIMove(), UI_UPDATE_DELAY);
                 }
             },
-            'aiLevel': (e) => {
-                this.aiLevel = e.target.value;
-                this.ai = this.createAI();
-                
-                // USI設定の表示/非表示
-                const usiConfig = document.getElementById('usiConfig');
-                if (usiConfig) {
-                    usiConfig.style.display = this.aiLevel === AI_LEVEL.USI ? 'flex' : 'none';
-                }
-                
-                // Ollama設定の表示/非表示
-                const ollamaConfig = document.getElementById('ollamaConfig');
-                if (ollamaConfig) {
-                    ollamaConfig.style.display = this.aiLevel === AI_LEVEL.OLLAMA ? 'flex' : 'none';
+            'aiLevelGote': (e) => {
+                this.aiLevelGote = e.target.value;
+                this.aiGote = this.createAI(PLAYER.GOTE);
+                // 即座に更新を試みる
+                this.updateAISettingsVisibility();
+                // 遅延更新も実行（確実に反映させるため）
+                this.scheduleAISettingsUpdate();
+                // AIが変更された場合、現在の手番が後手でAIの場合は思考を開始
+                if (this.currentTurn === PLAYER.GOTE && this.isAITurn()) {
+                    setTimeout(() => this.checkAndMakeAIMove(), UI_UPDATE_DELAY);
                 }
             },
-            'ollamaModel': (e) => {
-                // Ollamaモデルが変更された場合、Ollamaモードの場合はAIを再作成
-                if (this.aiLevel === AI_LEVEL.OLLAMA) {
-                    this.ai = this.createAI();
+            'ollamaModelSente': (e) => {
+                // 先手Ollamaモデルが変更された場合、先手がOllamaモードの場合はAIを再作成
+                if (this.aiLevelSente === AI_LEVEL.OLLAMA) {
+                    this.aiSente = this.createAI(PLAYER.SENTE);
                 }
             },
-            'usiServerUrl': (e) => {
-                // USIサーバーURLが変更された場合、USIモードの場合はAIを再作成
-                if (this.aiLevel === AI_LEVEL.USI) {
-                    this.ai = this.createAI();
+            'ollamaModelGote': (e) => {
+                // 後手Ollamaモデルが変更された場合、後手がOllamaモードの場合はAIを再作成
+                if (this.aiLevelGote === AI_LEVEL.OLLAMA) {
+                    this.aiGote = this.createAI(PLAYER.GOTE);
+                }
+            },
+            'usiServerUrlSente': (e) => {
+                // 先手USIサーバーURLが変更された場合、先手がUSIモードの場合はAIを再作成
+                if (this.aiLevelSente === AI_LEVEL.USI) {
+                    this.aiSente = this.createAI(PLAYER.SENTE);
+                }
+            },
+            'usiServerUrlGote': (e) => {
+                // 後手USIサーバーURLが変更された場合、後手がUSIモードの場合はAIを再作成
+                if (this.aiLevelGote === AI_LEVEL.USI) {
+                    this.aiGote = this.createAI(PLAYER.GOTE);
                 }
             },
             'newGameBtn': () => {
@@ -158,7 +290,7 @@ export class ShogiGame {
             const element = document.getElementById(id);
             if (element) {
                 let eventType = 'click';
-                if (id.includes('Input') || id.includes('select') || id === 'gameMode' || id === 'aiLevel') {
+                if (id.includes('Input') || id.includes('select')) {
                     eventType = 'change';
                 }
                 element.addEventListener(eventType, handler);
@@ -717,13 +849,10 @@ export class ShogiGame {
      * - 後手（GOTE）のターン: AIが後手を担当
      */
     isAITurn() {
-        if (this.gameMode === GAME_MODE.HUMAN_VS_HUMAN) return false;
-        // 人間対AIモード: 先手は人間、後手はAI
-        if (this.gameMode === GAME_MODE.HUMAN_VS_AI && this.currentTurn === PLAYER.SENTE) return false;
-        if (this.gameMode === GAME_MODE.HUMAN_VS_AI && this.currentTurn === PLAYER.GOTE) return true;
-        // AI対AIモード: 先手も後手もAIが担当
-        if (this.gameMode === GAME_MODE.AI_VS_AI) return true;
-        return false;
+        // 現在の手番に応じたAIレベルを取得
+        const currentAILevel = this.currentTurn === PLAYER.SENTE ? this.aiLevelSente : this.aiLevelGote;
+        // 「人間」でない場合はAIターン
+        return currentAILevel !== AI_LEVEL.HUMAN;
     }
 
     /**
@@ -759,35 +888,39 @@ export class ShogiGame {
         // フラグを設定（重複呼び出し防止）
         this.aiInProgress = true;
         
-        // 人間対AIモードまたはAI対AIモードの場合、どちらの手番かを明確にログ出力
+        // どちらの手番かを明確にログ出力
         const playerName = this.currentTurn === PLAYER.SENTE ? '先手' : '後手';
-        const gameModeInfo = this.gameMode === GAME_MODE.AI_VS_AI 
-            ? `[AI対AIモード - ${playerName}AI思考中]` 
-            : this.gameMode === GAME_MODE.HUMAN_VS_AI
-            ? `[人間対AIモード - ${playerName}AI思考中（AIは後手）]`
-            : '';
+        const gameModeInfo = `[${playerName}AI思考中]`;
         
         this.showAIThinking();
         
+        // 現在の手番に応じたAIを取得
+        const currentAI = this.getCurrentAI();
+        
+        // AIがnull（人間）の場合はスキップ
+        if (!currentAI) {
+            this.cleanupAIMove();
+            return;
+        }
+        
         // Ollama/USIの場合は非同期処理
-        if (this.ai.level === AI_LEVEL.OLLAMA || this.ai.level === AI_LEVEL.USI) {
-            const levelName = this.ai.level === AI_LEVEL.OLLAMA ? 'Ollama' : 'USI';
+        if (currentAI.level === AI_LEVEL.OLLAMA || currentAI.level === AI_LEVEL.USI) {
+            const levelName = currentAI.level === AI_LEVEL.OLLAMA ? 'Ollama' : 'USI';
             const logInfo = {
                 turn: this.currentTurn,
-                player: playerName,
-                gameMode: this.gameMode
+                player: playerName
             };
-            if (this.ai.level === AI_LEVEL.OLLAMA) {
-                logInfo.endpoint = this.ai.ollamaEndpoint;
-                logInfo.model = this.ai.ollamaModel;
+            if (currentAI.level === AI_LEVEL.OLLAMA) {
+                logInfo.endpoint = currentAI.ollamaEndpoint;
+                logInfo.model = currentAI.ollamaModel;
             } else {
-                logInfo.serverUrl = this.ai.usiClient && this.ai.usiClient.serverUrl;
+                logInfo.serverUrl = currentAI.usiClient && currentAI.usiClient.serverUrl;
             }
             console.info(`[Game] ${gameModeInfo} ${levelName} async move start`, logInfo);
             
             // 非同期処理を開始し、Promiseを保存（重複防止用）
             const currentTurn = this.currentTurn;
-            this.aiMovePromise = this.ai.getBestMoveAsync(this, currentTurn)
+            this.aiMovePromise = currentAI.getBestMoveAsync(this, currentTurn)
                     .then(move => {
                         // ゲーム状態が変わっていないか確認
                         if (this.gameOver || this.isReplaying || this.currentTurn !== currentTurn) {
@@ -803,10 +936,7 @@ export class ShogiGame {
                         
                         if (move) {
                             const playerName = currentTurn === PLAYER.SENTE ? '先手' : '後手';
-                            const gameModeInfo = this.gameMode === GAME_MODE.AI_VS_AI 
-                                ? `[AI対AIモード - ${playerName}AI]` 
-                                : '[AI]';
-                            console.info(`[Game] ${gameModeInfo} の手を適用`, {
+                            console.info(`[Game] [${playerName}AI] の手を適用`, {
                                 type: move.type,
                                 player: playerName,
                                 turn: currentTurn,
@@ -829,10 +959,7 @@ export class ShogiGame {
                             }
                         } else {
                             const playerName = currentTurn === PLAYER.SENTE ? '先手' : '後手';
-                            const gameModeInfo = this.gameMode === GAME_MODE.AI_VS_AI 
-                                ? `[AI対AIモード - ${playerName}AI]` 
-                                : '[AI]';
-                            console.warn(`[Game] ${gameModeInfo} が手を返しませんでした（投了またはエラー）`, {
+                            console.warn(`[Game] [${playerName}AI] が手を返しませんでした（投了またはエラー）`, {
                                 player: playerName,
                                 turn: currentTurn
                             });
@@ -841,20 +968,17 @@ export class ShogiGame {
                     })
                     .catch(error => {
                         const playerName = currentTurn === PLAYER.SENTE ? '先手' : '後手';
-                        const gameModeInfo = this.gameMode === GAME_MODE.AI_VS_AI 
-                            ? `[AI対AIモード - ${playerName}AI]` 
-                            : '[AI]';
-                        console.error(`[Game] ${gameModeInfo} 手取得エラー:`, {
+                        console.error(`[Game] [${playerName}AI] 手取得エラー:`, {
                             error: error.message,
                             stack: error.stack,
-                            level: this.ai.level,
+                            level: currentAI.level,
                             player: playerName,
                             turn: currentTurn
                         });
                         
                         this.cleanupAIMove();
                         
-                        if (this.ai.level === AI_LEVEL.USI && error.message && error.message.includes('エンジン')) {
+                        if (currentAI.level === AI_LEVEL.USI && error.message && error.message.includes('エンジン')) {
                             this.aiStopped = true;
                             console.error('[Game] USIエンジン停止を検知。AIを停止します。', { error: error.message });
                         }
@@ -866,12 +990,9 @@ export class ShogiGame {
         } else {
             // 通常のAIは従来通り
             const playerName = this.currentTurn === PLAYER.SENTE ? '先手' : '後手';
-            const gameModeInfo = this.gameMode === GAME_MODE.AI_VS_AI 
-                ? `[AI対AIモード - ${playerName}AI思考中]` 
-                : '';
             const thinkingTime = AI_THINKING_TIME.MIN + Math.random() * (AI_THINKING_TIME.MAX - AI_THINKING_TIME.MIN);
             
-            console.info(`[Game] ${gameModeInfo} 通常AI思考開始`, {
+            console.info(`[Game] [${playerName}AI思考中] 通常AI思考開始`, {
                 player: playerName,
                 turn: this.currentTurn,
                 thinkingTime: `${thinkingTime}ms`
@@ -891,13 +1012,10 @@ export class ShogiGame {
                     return;
                 }
                 
-                const move = this.ai.getBestMove(this, currentTurn);
+                const move = currentAI.getBestMove(this, currentTurn);
                 if (move) {
                     const appliedPlayerName = currentTurn === PLAYER.SENTE ? '先手' : '後手';
-                    const appliedGameModeInfo = this.gameMode === GAME_MODE.AI_VS_AI 
-                        ? `[AI対AIモード - ${appliedPlayerName}AI]` 
-                        : '[AI]';
-                    console.info(`[Game] ${appliedGameModeInfo} の手を適用`, {
+                    console.info(`[Game] [${appliedPlayerName}AI] の手を適用`, {
                         player: appliedPlayerName,
                         turn: currentTurn,
                         type: move.type
@@ -1479,35 +1597,31 @@ export class ShogiGame {
         this.positionHistory = [];
         this.checkHistory = [];
         
-        // AIレベルを更新
-        const aiLevelSelect = document.getElementById('aiLevel');
-        if (aiLevelSelect) {
-            this.aiLevel = aiLevelSelect.value;
-            this.ai = this.createAI();
-            
-            // USI設定の表示/非表示
-            const usiConfig = document.getElementById('usiConfig');
-            if (usiConfig) {
-                usiConfig.style.display = this.aiLevel === AI_LEVEL.USI ? 'flex' : 'none';
-            }
-            
-            // Ollama設定の表示/非表示
-            const ollamaConfig = document.getElementById('ollamaConfig');
-            if (ollamaConfig) {
-                ollamaConfig.style.display = this.aiLevel === AI_LEVEL.OLLAMA ? 'flex' : 'none';
-            }
+        // AIレベルを更新（先手と後手の設定を読み込む）
+        const aiLevelSenteSelect = document.getElementById('aiLevelSente');
+        const aiLevelGoteSelect = document.getElementById('aiLevelGote');
+        
+        if (aiLevelSenteSelect) {
+            this.aiLevelSente = aiLevelSenteSelect.value;
         }
+        if (aiLevelGoteSelect) {
+            this.aiLevelGote = aiLevelGoteSelect.value;
+        }
+        this.aiSente = this.createAI(PLAYER.SENTE);
+        this.aiGote = this.createAI(PLAYER.GOTE);
         
         // PieceMovesを更新
         this.pieceMoves.board = this.board;
         
         this.updateUI();
+        // updateUI()の後に確実に設定を更新
+        this.scheduleAISettingsUpdate();
         this.hideAIThinking();
         this.hidePromoteModal();
         this.exitReplayMode();
         
-        // AI対AIモードの場合は最初からAIが手を打つ
-        if (this.gameMode === GAME_MODE.AI_VS_AI) {
+        // AIの手番の場合は最初からAIが手を打つ
+        if (this.isAITurn()) {
             // クリーンアップを確実に実行してから次の思考を開始
             this.cleanupAIMove();
             setTimeout(() => {
@@ -1525,7 +1639,6 @@ export class ShogiGame {
         const kifuData = {
             version: '1.0',
             timestamp: new Date().toISOString(),
-            gameMode: this.gameMode,
             winner: this.winner,
             moves: this.moveHistory,
             initialBoard: INITIAL_BOARD.map(row => [...row])
@@ -1585,12 +1698,6 @@ export class ShogiGame {
         const infoElement = document.getElementById('kifuDataInfo');
         if (!infoElement) return;
 
-        const gameModeNames = {
-            'human-vs-human': '人間 vs 人間',
-            'human-vs-ai': '人間 vs AI',
-            'ai-vs-ai': 'AI vs AI'
-        };
-
         const winnerNames = {
             'sente': '先手',
             'gote': '後手',
@@ -1601,7 +1708,6 @@ export class ShogiGame {
             ? new Date(kifuData.timestamp).toLocaleString('ja-JP')
             : '不明';
 
-        const gameMode = gameModeNames[kifuData.gameMode] || kifuData.gameMode || '不明';
         const winner = winnerNames[kifuData.winner] || '不明';
         const moveCount = kifuData.moves ? kifuData.moves.length : 0;
 
@@ -1617,9 +1723,6 @@ export class ShogiGame {
             ${existingKifuWarning}
             <div style="margin-bottom: 15px;">
                 <strong>手数:</strong> ${moveCount}手
-            </div>
-            <div style="margin-bottom: 15px;">
-                <strong>ゲームモード:</strong> ${gameMode}
             </div>
             <div style="margin-bottom: 15px;">
                 <strong>勝者:</strong> ${winner}
@@ -1813,13 +1916,7 @@ export class ShogiGame {
         this.isReplaying = false;
 
         // ゲームモードを復元
-        if (kifuData.gameMode) {
-            const gameModeSelect = document.getElementById('gameMode');
-            if (gameModeSelect) {
-                gameModeSelect.value = kifuData.gameMode;
-                this.gameMode = kifuData.gameMode;
-            }
-        }
+        // ゲームモードの復元は不要（先手・後手の設定から自動判定）
 
         this.updateUI();
         this.updateMoveHistoryDisplay();
@@ -1839,14 +1936,8 @@ let game;
 window.addEventListener('DOMContentLoaded', () => {
     game = new ShogiGame();
     
-    // 初期状態のgameModeを確認
-    const gameModeSelect = document.getElementById('gameMode');
-    if (gameModeSelect) {
-        game.gameMode = gameModeSelect.value;
-    }
-    
-    // AI対AIモードの場合は最初からAIが手を打つ
-    if (game.gameMode === GAME_MODE.AI_VS_AI) {
+    // AIの手番の場合は最初からAIが手を打つ
+    if (game.isAITurn()) {
         setTimeout(() => {
             game.checkAndMakeAIMove();
         }, UI_UPDATE_DELAY * 2);

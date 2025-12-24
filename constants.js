@@ -19,6 +19,7 @@ export const GAME_MODE = {
 
 // AIレベル
 export const AI_LEVEL = {
+    HUMAN: 'human', // 人間
     BEGINNER: 'beginner',
     INTERMEDIATE: 'intermediate',
     ADVANCED: 'advanced',

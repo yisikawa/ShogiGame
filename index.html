@@ -13,31 +13,52 @@
             <div class="turn-indicator">
                 <span id="currentTurn">先手の番</span>
             </div>
-            <div class="game-mode">
-                <label>プレイモード:</label>
-                <select id="gameMode">
-                    <option value="human-vs-human">人間 vs 人間</option>
-                    <option value="human-vs-ai">人間 vs AI</option>
-                    <option value="ai-vs-ai">AI vs AI</option>
-                </select>
-            </div>
-            <div class="ai-level">
-                <label>AI強さ:</label>
-                <select id="aiLevel">
-                    <option value="beginner">初級</option>
-                    <option value="intermediate" selected>中級</option>
-                    <option value="advanced">上級</option>
-                    <option value="ollama">Ollama LLM</option>
-                    <option value="usi">USIエンジン</option>
-                </select>
-            </div>
-            <div class="ollama-model" id="ollamaConfig" style="display: none;">
-                <label>Ollamaモデル:</label>
-                <input type="text" id="ollamaModel" placeholder="gemma3:1b" value="gemma3:1b">
-            </div>
-            <div class="usi-config" id="usiConfig" style="display: none;">
-                <label>USIサーバーURL:</label>
-                <input type="text" id="usiServerUrl" value="http://localhost:8080" style="width: 200px;">
+            <!-- 先手と後手の設定を2段に分ける -->
+            <div class="ai-settings-container" id="aiSettingsContainer">
+                <!-- 先手の設定（1段目） -->
+                <div class="ai-settings-row ai-settings-sente">
+                    <div class="ai-level-sente" id="aiLevelSenteContainer">
+                        <label>先手:</label>
+                        <select id="aiLevelSente">
+                            <option value="human" selected>人間</option>
+                            <option value="beginner">AI初級</option>
+                            <option value="intermediate">AI中級</option>
+                            <option value="advanced">AI上級</option>
+                            <option value="ollama">Ollama LLM</option>
+                            <option value="usi">USIエンジン</option>
+                        </select>
+                    </div>
+                    <div class="ollama-model-sente" id="ollamaConfigSente" style="display: none;">
+                        <label>先手Ollamaモデル:</label>
+                        <input type="text" id="ollamaModelSente" placeholder="gemma3:1b" value="gemma3:1b">
+                    </div>
+                    <div class="usi-config-sente" id="usiConfigSente" style="display: none;">
+                        <label>先手USIサーバーURL:</label>
+                        <input type="text" id="usiServerUrlSente" value="http://localhost:8080" style="width: 200px;">
+                    </div>
+                </div>
+                <!-- 後手の設定（2段目） -->
+                <div class="ai-settings-row ai-settings-gote">
+                    <div class="ai-level-gote" id="aiLevelGoteContainer">
+                        <label>後手:</label>
+                        <select id="aiLevelGote">
+                            <option value="human" selected>人間</option>
+                            <option value="beginner">AI初級</option>
+                            <option value="intermediate">AI中級</option>
+                            <option value="advanced">AI上級</option>
+                            <option value="ollama">Ollama LLM</option>
+                            <option value="usi">USIエンジン</option>
+                        </select>
+                    </div>
+                    <div class="ollama-model-gote" id="ollamaConfigGote" style="display: none;">
+                        <label>後手Ollamaモデル:</label>
+                        <input type="text" id="ollamaModelGote" placeholder="gemma3:1b" value="gemma3:1b">
+                    </div>
+                    <div class="usi-config-gote" id="usiConfigGote" style="display: none;">
+                        <label>後手USIサーバーURL:</label>
+                        <input type="text" id="usiServerUrlGote" value="http://localhost:8080" style="width: 200px;">
+                    </div>
+                </div>
             </div>
             <button id="resetBtn">リセット</button>
         </div>
