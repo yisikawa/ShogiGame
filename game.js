@@ -46,6 +46,7 @@ export class ShogiGame {
         this.aiStopped = false; // USIエンジン停止時の思考停止フラグ
         this.aiMovePromise = null; // 現在進行中のAI思考のPromise（重複防止用）
         this.aiMoveTimeout = null; // AI思考のタイムアウトID（クリーンアップ用）
+        this.gameStarted = false; // ゲームが開始されたかどうか（ニューゲームボタンを押すまでfalse）
         
         // 駒の移動ロジックを初期化
         this.pieceMoves = new PieceMoves(
@@ -106,21 +107,65 @@ export class ShogiGame {
             }
         }
         
-        // USIサーバーURLを取得
-        let usiServerUrl = null;
+        // USIサーバーURLを取得（デフォルト: http://localhost:8080）
+        let usiServerUrl = 'http://localhost:8080'; // デフォルト値
+        let usiServerUrlElement = null;
         if (isSente) {
-            const usiServerUrlElement = document.getElementById('usiServerUrlSente');
-            if (usiServerUrlElement && usiServerUrlElement.value.trim()) {
-                usiServerUrl = usiServerUrlElement.value.trim();
+            usiServerUrlElement = document.getElementById('usiServerUrlSente');
+            if (usiServerUrlElement) {
+                const currentValue = usiServerUrlElement.value.trim();
+                // 元のURLが保存されている場合はそれを使用
+                if (usiServerUrlElement.dataset.originalUrl) {
+                    usiServerUrl = usiServerUrlElement.dataset.originalUrl;
+                } 
+                // 現在の値がURL形式の場合はそれを使用
+                else if (currentValue && (currentValue.startsWith('http://') || currentValue.startsWith('https://'))) {
+                    usiServerUrl = currentValue;
+                }
+                // それ以外（エンジン名が表示されている場合など）はデフォルト値を使用（既に設定済み）
             }
         } else {
-            const usiServerUrlElement = document.getElementById('usiServerUrlGote');
-            if (usiServerUrlElement && usiServerUrlElement.value.trim()) {
-                usiServerUrl = usiServerUrlElement.value.trim();
+            usiServerUrlElement = document.getElementById('usiServerUrlGote');
+            if (usiServerUrlElement) {
+                const currentValue = usiServerUrlElement.value.trim();
+                // 元のURLが保存されている場合はそれを使用
+                if (usiServerUrlElement.dataset.originalUrl) {
+                    usiServerUrl = usiServerUrlElement.dataset.originalUrl;
+                } 
+                // 現在の値がURL形式の場合はそれを使用
+                else if (currentValue && (currentValue.startsWith('http://') || currentValue.startsWith('https://'))) {
+                    usiServerUrl = currentValue;
+                }
+                // それ以外（エンジン名が表示されている場合など）はデフォルト値を使用（既に設定済み）
             }
         }
         
-        return new ShogiAI(aiLevel, null, ollamaModel, usiServerUrl);
+        const ai = new ShogiAI(aiLevel, null, ollamaModel, usiServerUrl);
+        
+        // USIエンジンの場合、エンジン名取得時のコールバックを設定
+        if (aiLevel === AI_LEVEL.USI && usiServerUrlElement) {
+            // 元のURLを保存（エンジン名表示用、デフォルト値も含む）
+            if (!usiServerUrlElement.dataset.originalUrl) {
+                usiServerUrlElement.dataset.originalUrl = usiServerUrl || 'http://localhost:8080';
+            }
+            
+            ai.setEngineNameCallback((engineName, engineAuthor) => {
+                // URL表示欄をエンジン名に変更（編集可能のまま）
+                const displayText = engineAuthor ? `${engineName} (${engineAuthor})` : engineName;
+                const originalUrl = usiServerUrlElement.dataset.originalUrl || usiServerUrl;
+                // 元のURLを保持（編集時に使用）
+                if (!usiServerUrlElement.dataset.originalUrl) {
+                    usiServerUrlElement.dataset.originalUrl = usiServerUrl;
+                }
+                // エンジン名を表示（編集可能）
+                usiServerUrlElement.value = displayText;
+                usiServerUrlElement.title = `エンジン名: ${displayText}\nサーバーURL: ${originalUrl}\n（編集してURLを変更できます）`;
+                // 編集可能であることを明示
+                usiServerUrlElement.readOnly = false;
+            });
+        }
+        
+        return ai;
     }
     
     /**
@@ -249,13 +294,27 @@ export class ShogiGame {
                 }
             },
             'usiServerUrlSente': (e) => {
-                // 先手USIサーバーURLが変更された場合、先手がUSIモードの場合はAIを再作成
+                // 先手USIサーバーURLが変更された場合
+                const input = e.target;
+                const newValue = input.value.trim();
+                // URL形式の場合は、元のURLを更新
+                if (newValue && (newValue.startsWith('http://') || newValue.startsWith('https://'))) {
+                    input.dataset.originalUrl = newValue;
+                }
+                // 先手がUSIモードの場合はAIを再作成
                 if (this.aiLevelSente === AI_LEVEL.USI) {
                     this.aiSente = this.createAI(PLAYER.SENTE);
                 }
             },
             'usiServerUrlGote': (e) => {
-                // 後手USIサーバーURLが変更された場合、後手がUSIモードの場合はAIを再作成
+                // 後手USIサーバーURLが変更された場合
+                const input = e.target;
+                const newValue = input.value.trim();
+                // URL形式の場合は、元のURLを更新
+                if (newValue && (newValue.startsWith('http://') || newValue.startsWith('https://'))) {
+                    input.dataset.originalUrl = newValue;
+                }
+                // 後手がUSIモードの場合はAIを再作成
                 if (this.aiLevelGote === AI_LEVEL.USI) {
                     this.aiGote = this.createAI(PLAYER.GOTE);
                 }
@@ -290,7 +349,8 @@ export class ShogiGame {
             const element = document.getElementById(id);
             if (element) {
                 let eventType = 'click';
-                if (id.includes('Input') || id.includes('select')) {
+                // select要素またはInput要素の場合はchangeイベントを使用
+                if (id.includes('Input') || id.includes('select') || element.tagName === 'SELECT' || element.tagName === 'INPUT') {
                     eventType = 'change';
                 }
                 element.addEventListener(eventType, handler);
@@ -621,7 +681,7 @@ export class ShogiGame {
      * セルクリックを処理
      */
     handleCellClick(row, col) {
-        if (this.gameOver || this.isAITurn()) return;
+        if (!this.gameStarted || this.gameOver || this.isAITurn()) return;
         
         const piece = this.board[row][col];
         
@@ -768,7 +828,7 @@ export class ShogiGame {
      * 持ち駒クリックを処理
      */
     handleCapturedPieceClick(piece, player) {
-        if (player !== this.currentTurn || this.gameOver) return;
+        if (!this.gameStarted || player !== this.currentTurn || this.gameOver) return;
         
         if (this.selectedCapturedPiece && 
             this.selectedCapturedPiece.piece === piece && 
@@ -1579,6 +1639,9 @@ export class ShogiGame {
      * リセット
      */
     reset() {
+        // ゲーム開始フラグを設定
+        this.gameStarted = true;
+        
         // 進行中のAI思考をクリーンアップ
         this.cleanupAIMove();
         this.aiMovePromise = null;
@@ -1935,11 +1998,8 @@ export class ShogiGame {
 let game;
 window.addEventListener('DOMContentLoaded', () => {
     game = new ShogiGame();
+    window.game = game; // デバッグ用にwindowに公開
     
-    // AIの手番の場合は最初からAIが手を打つ
-    if (game.isAITurn()) {
-        setTimeout(() => {
-            game.checkAndMakeAIMove();
-        }, UI_UPDATE_DELAY * 2);
-    }
+    // ゲーム開始前はAIが自動で手を打たない（ニューゲームボタンを押すまで待機）
+    // 初期状態では gameStarted = false のため、AIは動作しない
 });

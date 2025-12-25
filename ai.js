@@ -35,6 +35,19 @@ export class ShogiAI {
         const serverUrl = usiServerUrl ?? USI_CONFIG.SERVER_URL;
         this.usiClient = this.level === AI_LEVEL.USI ? new USIClient(serverUrl) : null;
         this.usiTimeout = USI_CONFIG.TIMEOUT ?? 30000;
+        this.usiServerUrl = serverUrl; // サーバーURLを保存（UI更新用）
+        this.onEngineNameReceived = null; // エンジン名取得時のコールバック
+    }
+    
+    /**
+     * エンジン名取得時のコールバックを設定
+     * @param {Function} callback - エンジン名と作者を受け取るコールバック (engineName, engineAuthor) => void
+     */
+    setEngineNameCallback(callback) {
+        this.onEngineNameReceived = callback;
+        if (this.usiClient) {
+            this.usiClient.onEngineNameReceived = callback;
+        }
     }
 
     /**

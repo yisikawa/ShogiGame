@@ -14,6 +14,9 @@ export class USIClient {
         this.engineDown = false; // エンジン停止状態かどうか
         this.restartingEngine = false; // エンジン再起動中かどうか
         this.autoRestartEnabled = true; // 自動再起動を有効にするかどうか
+        this.engineName = null; // エンジン名
+        this.engineAuthor = null; // エンジン作者
+        this.onEngineNameReceived = null; // エンジン名取得時のコールバック
         
         // 重複リクエスト防止用
         this.pendingConnectRequest = null; // 進行中のconnectリクエスト
@@ -289,6 +292,23 @@ export class USIClient {
                 
                 this.engineReady = data.ready;
                 this.engineDown = false; // 再初期化が成功したので停止状態を解除
+                
+                // エンジン名と作者を保存
+                if (data.name) {
+                    this.engineName = data.name;
+                }
+                if (data.author) {
+                    this.engineAuthor = data.author;
+                }
+                
+                // エンジン名取得時のコールバックを呼び出し
+                if (this.onEngineNameReceived && this.engineName) {
+                    try {
+                        this.onEngineNameReceived(this.engineName, this.engineAuthor);
+                    } catch (error) {
+                        this.debugLog('warn', 'エンジン名コールバックでエラー', { error: error.message });
+                    }
+                }
                 
                 this.debugLog('success', 'usiok/readyok受信完了 - エンジン初期化完了', {
                     ready: this.engineReady,

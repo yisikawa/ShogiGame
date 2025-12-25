@@ -386,6 +386,7 @@ h1 {
     font-size: 1em;
     background: white;
     transition: border-color 0.3s;
+    min-width: 455px;
 }
 
 .usi-config-sente input:hover,
