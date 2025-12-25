@@ -241,6 +241,109 @@ export class ShogiGame {
     }
     
     /**
+     * Ollamaモデルが利用可能か確認し、必要に応じて起動する
+     * @param {string} modelName - 確認するモデル名
+     * @param {string} playerName - プレイヤー名（先手/後手）
+     */
+    async checkOllamaModel(modelName, playerName) {
+        if (!modelName || !modelName.trim()) {
+            console.warn(`[Game] ${playerName}Ollamaモデル名が空です`);
+            return;
+        }
+        
+        const endpoint = OLLAMA_CONFIG.ENDPOINT;
+        const timeout = 30000; // 30秒のタイムアウト
+        
+        try {
+            // まずモデル一覧を取得してモデルが存在するか確認
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+            
+            const modelsResponse = await fetch(`${endpoint}/api/tags`, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' },
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (!modelsResponse.ok) {
+                throw new Error(`Ollamaサーバーに接続できません: ${modelsResponse.status}`);
+            }
+            
+            const modelsData = await modelsResponse.json();
+            const availableModels = modelsData.models || [];
+            const modelExists = availableModels.some(model => {
+                const name = model.name || model.model || '';
+                return name === modelName || name.startsWith(`${modelName}:`);
+            });
+            
+            if (!modelExists) {
+                console.warn(`[Game] ${playerName}Ollamaモデル "${modelName}" が見つかりません。モデルをプルします...`);
+                
+                // モデルが存在しない場合、プルを試みる
+                const pullController = new AbortController();
+                const pullTimeoutId = setTimeout(() => pullController.abort(), timeout * 10); // プルは長めに設定（5分）
+                
+                const pullResponse = await fetch(`${endpoint}/api/pull`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: modelName }),
+                    signal: pullController.signal
+                });
+                
+                if (!pullResponse.ok) {
+                    clearTimeout(pullTimeoutId);
+                    throw new Error(`モデル "${modelName}" のプルに失敗しました: ${pullResponse.status}`);
+                }
+                
+                // ストリーミングレスポンスを処理
+                const reader = pullResponse.body.getReader();
+                const decoder = new TextDecoder();
+                let pullComplete = false;
+                
+                try {
+                    while (!pullComplete) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        
+                        const chunk = decoder.decode(value, { stream: true });
+                        const lines = chunk.split('\n').filter(line => line.trim());
+                        
+                        for (const line of lines) {
+                            try {
+                                const data = JSON.parse(line);
+                                if (data.status) {
+                                    console.log(`[Game] ${playerName}Ollamaモデルプル: ${data.status}`);
+                                }
+                                if (data.status === 'success' || (data.status && data.status.includes('complete'))) {
+                                    console.log(`[Game] ${playerName}Ollamaモデル "${modelName}" のプルが完了しました`);
+                                    pullComplete = true;
+                                    break;
+                                }
+                            } catch (e) {
+                                // JSON解析エラーは無視
+                            }
+                        }
+                    }
+                } finally {
+                    reader.releaseLock();
+                    clearTimeout(pullTimeoutId);
+                }
+            } else {
+                console.log(`[Game] ${playerName}Ollamaモデル "${modelName}" は利用可能です`);
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.error(`[Game] ${playerName}Ollamaモデル確認がタイムアウトしました`);
+            } else {
+                console.error(`[Game] ${playerName}Ollamaモデル確認エラー:`, error.message);
+            }
+            // エラーが発生しても処理は続行（モデルが既に存在する可能性があるため）
+        }
+    }
+    
+    /**
      * 現在の手番に応じたAIインスタンスを取得
      */
     getCurrentAI() {
@@ -407,7 +510,12 @@ export class ShogiGame {
                 // 遅延更新も実行（確実に反映させるため）
                 this.scheduleAISettingsUpdate();
             },
-            'ollamaModelSente': (e) => {
+            'ollamaModelSente': async (e) => {
+                const modelName = e.target.value.trim();
+                // モデル名が変更された場合、Ollamaサーバーに接続してモデルを確認
+                if (modelName) {
+                    await this.checkOllamaModel(modelName, '先手');
+                }
                 // 先手Ollamaモデルが変更された場合、先手がOllamaモードの場合はAIを再作成
                 if (this.aiLevelSente === AI_LEVEL.OLLAMA) {
                     this.aiSente = this.createAI(PLAYER.SENTE);
@@ -417,7 +525,12 @@ export class ShogiGame {
                     this.cleanupAIMove();
                 }
             },
-            'ollamaModelGote': (e) => {
+            'ollamaModelGote': async (e) => {
+                const modelName = e.target.value.trim();
+                // モデル名が変更された場合、Ollamaサーバーに接続してモデルを確認
+                if (modelName) {
+                    await this.checkOllamaModel(modelName, '後手');
+                }
                 // 後手Ollamaモデルが変更された場合、後手がOllamaモードの場合はAIを再作成
                 if (this.aiLevelGote === AI_LEVEL.OLLAMA) {
                     this.aiGote = this.createAI(PLAYER.GOTE);
