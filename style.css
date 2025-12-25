@@ -243,6 +243,65 @@ h1 {
     transition: border-color 0.3s;
 }
 
+/* AI対AIモード用: 先手と後手の設定を2段に分けるコンテナ */
+.ai-settings-container {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    width: 100%;
+}
+
+/* 先手と後手の設定行 */
+.ai-settings-row {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 8px;
+    background: #f8f9fa !important;
+    border-radius: 5px;
+    border: 1px solid #e0e0e0;
+}
+
+.ai-settings-sente {
+    border-left: 4px solid #4a90e2 !important;
+}
+
+.ai-settings-gote {
+    border-left: 4px solid #e24a4a !important;
+}
+
+/* 先手と後手のAIレベル選択 */
+.ai-level-sente,
+.ai-level-gote {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ai-level-sente label,
+.ai-level-gote label {
+    font-weight: bold;
+    color: #333;
+    min-width: 100px;
+}
+
+.ai-level-sente select,
+.ai-level-gote select {
+    padding: 8px 12px;
+    border: 2px solid #ddd;
+    border-radius: 5px;
+    font-size: 1em;
+    background: white;
+    cursor: pointer;
+    transition: border-color 0.3s;
+}
+
+.ai-level-sente select:hover,
+.ai-level-gote select:hover {
+    border-color: #667eea;
+}
+
 .ollama-model {
     display: flex;
     align-items: center;
@@ -266,6 +325,73 @@ h1 {
 
 .ollama-model input:hover,
 .ollama-model input:focus {
+    border-color: #667eea;
+    outline: none;
+}
+
+/* 先手と後手のOllama設定 */
+.ollama-model-sente,
+.ollama-model-gote {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ollama-model-sente label,
+.ollama-model-gote label {
+    font-weight: bold;
+    color: #333;
+    min-width: 140px;
+}
+
+.ollama-model-sente input,
+.ollama-model-gote input {
+    padding: 8px 12px;
+    border: 2px solid #ddd;
+    border-radius: 5px;
+    font-size: 1em;
+    background: white;
+    transition: border-color 0.3s;
+    min-width: 150px;
+}
+
+.ollama-model-sente input:hover,
+.ollama-model-sente input:focus,
+.ollama-model-gote input:hover,
+.ollama-model-gote input:focus {
+    border-color: #667eea;
+    outline: none;
+}
+
+/* 先手と後手のUSI設定 */
+.usi-config-sente,
+.usi-config-gote {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.usi-config-sente label,
+.usi-config-gote label {
+    font-weight: bold;
+    color: #333;
+    min-width: 140px;
+}
+
+.usi-config-sente input,
+.usi-config-gote input {
+    padding: 8px 12px;
+    border: 2px solid #ddd;
+    border-radius: 5px;
+    font-size: 1em;
+    background: white;
+    transition: border-color 0.3s;
+}
+
+.usi-config-sente input:hover,
+.usi-config-sente input:focus,
+.usi-config-gote input:hover,
+.usi-config-gote input:focus {
     border-color: #667eea;
     outline: none;
 }
