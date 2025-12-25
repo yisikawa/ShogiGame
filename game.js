@@ -197,9 +197,47 @@ export class ShogiGame {
                 // 編集可能であることを明示
                 usiServerUrlElement.readOnly = false;
             });
+            
+            // USIエンジンの初期化は「ニューゲーム」ボタンが押されるまで実行しない
+            // （ニューゲームボタンのイベントハンドラで実行される）
         }
         
         return ai;
+    }
+    
+    /**
+     * USIエンジンを初期化し、新しいゲームを開始する
+     * （ニューゲームボタンが押された時に呼ばれる）
+     */
+    initializeUSIEngines() {
+        const engines = [
+            { ai: this.aiSente, name: '先手' },
+            { ai: this.aiGote, name: '後手' }
+        ];
+        
+        engines.forEach(({ ai, name }) => {
+            if (ai && ai.usiClient) {
+                this.initializeSingleUSIEngine(ai.usiClient, name);
+            }
+        });
+    }
+    
+    /**
+     * 単一のUSIエンジンを初期化し、新しいゲームを開始する
+     * @param {USIClient} usiClient - USIクライアントインスタンス
+     * @param {string} name - エンジン名（先手/後手）
+     */
+    async initializeSingleUSIEngine(usiClient, name) {
+        try {
+            // エンジン初期化（接続とエンジン名取得）
+            await usiClient.initialize();
+            
+            // 初期化成功後、ゲーム開始時にusinewgameを送信
+            await usiClient.sendNewGame();
+        } catch (error) {
+            // エラーハンドリング（初期化エラーまたはusinewgameエラー）
+            console.warn(`[Game] ${name}USIエンジン処理エラー:`, error.message);
+        }
     }
     
     /**
@@ -293,6 +331,32 @@ export class ShogiGame {
             'resetBtn': () => this.reset(),
             'aiLevelSente': (e) => {
                 this.aiLevelSente = e.target.value;
+                // USIエンジンが選択された場合、URL表示欄をURL表示に戻す
+                if (this.aiLevelSente === AI_LEVEL.USI) {
+                    const usiServerUrlElement = document.getElementById('usiServerUrlSente');
+                    if (usiServerUrlElement) {
+                        // 元のURLが保存されている場合はそれを使用
+                        if (usiServerUrlElement.dataset.originalUrl) {
+                            usiServerUrlElement.value = usiServerUrlElement.dataset.originalUrl;
+                            usiServerUrlElement.title = '';
+                            console.log('[Game] 先手USIエンジン選択: URL表示に戻しました', { url: usiServerUrlElement.dataset.originalUrl });
+                        }
+                        // 現在の値がURL形式の場合はそれを使用
+                        else if (usiServerUrlElement.value && (usiServerUrlElement.value.startsWith('http://') || usiServerUrlElement.value.startsWith('https://'))) {
+                            usiServerUrlElement.dataset.originalUrl = usiServerUrlElement.value;
+                            usiServerUrlElement.title = '';
+                            console.log('[Game] 先手USIエンジン選択: 現在のURLを保持', { url: usiServerUrlElement.value });
+                        }
+                        // それ以外の場合はデフォルト値を使用
+                        else {
+                            const defaultUrl = 'http://localhost:8080';
+                            usiServerUrlElement.value = defaultUrl;
+                            usiServerUrlElement.dataset.originalUrl = defaultUrl;
+                            usiServerUrlElement.title = '';
+                            console.log('[Game] 先手USIエンジン選択: デフォルトURLを使用', { url: defaultUrl });
+                        }
+                    }
+                }
                 this.aiSente = this.createAI(PLAYER.SENTE);
                 // 対戦モード変更時はゲームを停止
                 this.gameStarted = false;
@@ -306,6 +370,32 @@ export class ShogiGame {
             },
             'aiLevelGote': (e) => {
                 this.aiLevelGote = e.target.value;
+                // USIエンジンが選択された場合、URL表示欄をURL表示に戻す
+                if (this.aiLevelGote === AI_LEVEL.USI) {
+                    const usiServerUrlElement = document.getElementById('usiServerUrlGote');
+                    if (usiServerUrlElement) {
+                        // 元のURLが保存されている場合はそれを使用
+                        if (usiServerUrlElement.dataset.originalUrl) {
+                            usiServerUrlElement.value = usiServerUrlElement.dataset.originalUrl;
+                            usiServerUrlElement.title = '';
+                            console.log('[Game] 後手USIエンジン選択: URL表示に戻しました', { url: usiServerUrlElement.dataset.originalUrl });
+                        }
+                        // 現在の値がURL形式の場合はそれを使用
+                        else if (usiServerUrlElement.value && (usiServerUrlElement.value.startsWith('http://') || usiServerUrlElement.value.startsWith('https://'))) {
+                            usiServerUrlElement.dataset.originalUrl = usiServerUrlElement.value;
+                            usiServerUrlElement.title = '';
+                            console.log('[Game] 後手USIエンジン選択: 現在のURLを保持', { url: usiServerUrlElement.value });
+                        }
+                        // それ以外の場合はデフォルト値を使用
+                        else {
+                            const defaultUrl = 'http://localhost:8080';
+                            usiServerUrlElement.value = defaultUrl;
+                            usiServerUrlElement.dataset.originalUrl = defaultUrl;
+                            usiServerUrlElement.title = '';
+                            console.log('[Game] 後手USIエンジン選択: デフォルトURLを使用', { url: defaultUrl });
+                        }
+                    }
+                }
                 this.aiGote = this.createAI(PLAYER.GOTE);
                 // 対戦モード変更時はゲームを停止
                 this.gameStarted = false;
@@ -1729,6 +1819,10 @@ export class ShogiGame {
         }
         this.aiSente = this.createAI(PLAYER.SENTE);
         this.aiGote = this.createAI(PLAYER.GOTE);
+        
+        // USIエンジンが選択されている場合、エンジンに接続してエンジン名を取得
+        // （ニューゲームボタンが押された時点で接続する）
+        this.initializeUSIEngines();
         
         // PieceMovesを更新
         this.pieceMoves.board = this.board;

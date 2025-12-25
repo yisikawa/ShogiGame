@@ -154,6 +154,93 @@ export class USIClient {
     }
 
     /**
+     * 新しいゲームを開始（usinewgameを送信）
+     */
+    async sendNewGame() {
+        // 既に進行中のリクエストがある場合は待機
+        if (this.pendingNewGameRequest) {
+            this.debugLog('info', '既存のusinewgameリクエストを待機します...');
+            try {
+                return await this.pendingNewGameRequest;
+            } catch (error) {
+                // 既存のリクエストがエラーでも続行
+                this.debugLog('warn', '既存のusinewgameリクエストがエラーでした', { error: error.message });
+            }
+        }
+        
+        const startTime = performance.now();
+        this.debugLog('info', 'usinewgameリクエスト送信', {
+            url: `${this.serverUrl}/usi/usinewgame`
+        });
+        
+        // AbortControllerを作成
+        const newGameAbortController = new AbortController();
+        this.requestAbortController = newGameAbortController;
+        
+        // リクエストを保存
+        const newGamePromise = (async () => {
+            try {
+                const response = await fetch(`${this.serverUrl}/usi/usinewgame`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    signal: newGameAbortController.signal
+                });
+                
+                const elapsed = (performance.now() - startTime).toFixed(2);
+                
+                if (!response.ok) {
+                    const errorText = await response.text().catch(() => '');
+                    this.debugLog('error', `usinewgameエラー: ${response.status}`, {
+                        status: response.status,
+                        statusText: response.statusText,
+                        body: errorText,
+                        elapsed: `${elapsed}ms`
+                    });
+                    throw new Error(`usinewgameエラー: ${response.status} ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                this.newGameSent = true;
+                
+                this.debugLog('success', 'usinewgame成功', {
+                    ...data,
+                    elapsed: `${elapsed}ms`
+                });
+                
+                return data;
+            } catch (error) {
+                const elapsed = (performance.now() - startTime).toFixed(2);
+                
+                // リクエスト状態をクリア
+                if (this.pendingNewGameRequest === newGamePromise) {
+                    this.pendingNewGameRequest = null;
+                }
+                this.requestAbortController = null;
+                
+                if (error.name === 'AbortError') {
+                    this.debugLog('warn', 'usinewgameリクエストがキャンセルされました');
+                    throw new Error('usinewgameリクエストがキャンセルされました');
+                }
+                
+                this.debugLog('error', 'usinewgameリクエストエラー', {
+                    error: error.message,
+                    elapsed: `${elapsed}ms`
+                });
+                throw error;
+            } finally {
+                // リクエスト完了時にクリア
+                if (this.pendingNewGameRequest === newGamePromise) {
+                    this.pendingNewGameRequest = null;
+                }
+            }
+        })();
+        
+        this.pendingNewGameRequest = newGamePromise;
+        
+        return await newGamePromise;
+    }
+
+    /**
      * エンジンを再起動
      */
     async restartEngine() {
@@ -182,7 +269,7 @@ export class USIClient {
             this.connected = false;
             this.engineReady = false;
             this.lastPositionSfen = null;
-            this.newGameSent = false;
+            this.newGameSent = false; // 再起動時はnewGameSentをリセット（次回ゲーム開始時に送信される）
             
             // 進行中のリクエストをキャンセル
             this.cancelPendingRequests();
@@ -595,47 +682,8 @@ export class USIClient {
                 }
             }
             
-            // usinewgameリクエストを送信（positionの前）
-            if (!this.newGameSent) {
-                const newGameStartTime = performance.now();
-                this.debugLog('info', 'usinewgameリクエスト送信', {
-                    url: `${this.serverUrl}/usi/usinewgame`
-                });
-                
-                try {
-                    const newGameResponse = await fetch(`${this.serverUrl}/usi/usinewgame`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' }
-                    });
-                    
-                    const newGameElapsed = (performance.now() - newGameStartTime).toFixed(2);
-                    
-                    if (!newGameResponse.ok) {
-                        const errorText = await newGameResponse.text().catch(() => '');
-                        this.debugLog('error', `usinewgameエラー: ${newGameResponse.status}`, {
-                            status: newGameResponse.status,
-                            statusText: newGameResponse.statusText,
-                            body: errorText,
-                            elapsed: `${newGameElapsed}ms`
-                        });
-                        // usinewgameエラーでも続行（エンジンによっては必須でない場合がある）
-                    } else {
-                        const newGameData = await newGameResponse.json();
-                        this.debugLog('success', 'usinewgame成功', {
-                            ...newGameData,
-                            elapsed: `${newGameElapsed}ms`
-                        });
-                        this.newGameSent = true;
-                    }
-                } catch (error) {
-                    const newGameElapsed = (performance.now() - newGameStartTime).toFixed(2);
-                    this.debugLog('error', 'usinewgameリクエストエラー', {
-                        error: error.message,
-                        elapsed: `${newGameElapsed}ms`
-                    });
-                    // usinewgameエラーでも続行
-                }
-            }
+            // usinewgameはゲーム開始時（reset()）にのみ送信される
+            // ここでは送信しない
             
             // 局面設定
             const positionStartTime = performance.now();
