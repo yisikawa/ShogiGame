@@ -277,23 +277,7 @@ export class USIClient {
 
                 const data = await response.json();
                 
-                // usiok/readyokを受信したかどうかを確認
-                if (!data.ready) {
-                    // 初期化が完了しなかった場合はエンジン停止の可能性
-                    this.engineDown = true;
-                    this.engineReady = false;
-                    
-                    this.debugLog('error', 'usiok/readyokが受信されませんでした', {
-                        data: data,
-                        elapsed: `${elapsed}ms`
-                    });
-                    throw new Error('usiok/readyokが受信されませんでした');
-                }
-                
-                this.engineReady = data.ready;
-                this.engineDown = false; // 再初期化が成功したので停止状態を解除
-                
-                // エンジン名と作者を保存
+                // エンジン名と作者を保存（readyでなくても取得できる場合がある）
                 if (data.name) {
                     this.engineName = data.name;
                 }
@@ -301,7 +285,7 @@ export class USIClient {
                     this.engineAuthor = data.author;
                 }
                 
-                // エンジン名取得時のコールバックを呼び出し
+                // エンジン名取得時のコールバックを呼び出し（readyでなくてもエンジン名が取得されていれば表示）
                 if (this.onEngineNameReceived && this.engineName) {
                     try {
                         this.onEngineNameReceived(this.engineName, this.engineAuthor);
@@ -309,6 +293,43 @@ export class USIClient {
                         this.debugLog('warn', 'エンジン名コールバックでエラー', { error: error.message });
                     }
                 }
+                
+                // usiok/readyokを受信したかどうかを確認
+                if (!data.ready) {
+                    // エンジン名が取得できている場合は、エラーを投げずに警告のみ
+                    if (this.engineName) {
+                        this.engineDown = true;
+                        this.engineReady = false;
+                        
+                        this.debugLog('warn', 'usiok/readyokが受信されませんでしたが、エンジン名は取得できました', {
+                            engineName: this.engineName,
+                            engineAuthor: this.engineAuthor,
+                            data: data,
+                            elapsed: `${elapsed}ms`
+                        });
+                        
+                        // エンジン名は取得できているが、readyでないため対局には使用できない
+                        // エラーを投げずに、ready: falseの状態で返す
+                        return {
+                            ready: false,
+                            name: this.engineName,
+                            author: this.engineAuthor
+                        };
+                    } else {
+                        // エンジン名も取得できていない場合はエラー
+                        this.engineDown = true;
+                        this.engineReady = false;
+                        
+                        this.debugLog('error', 'usiok/readyokが受信されませんでした', {
+                            data: data,
+                            elapsed: `${elapsed}ms`
+                        });
+                        throw new Error('usiok/readyokが受信されませんでした');
+                    }
+                }
+                
+                this.engineReady = data.ready;
+                this.engineDown = false; // 再初期化が成功したので停止状態を解除
                 
                 this.debugLog('success', 'usiok/readyok受信完了 - エンジン初期化完了', {
                     ready: this.engineReady,

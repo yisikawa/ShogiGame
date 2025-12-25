@@ -114,32 +114,65 @@ export class ShogiGame {
             usiServerUrlElement = document.getElementById('usiServerUrlSente');
             if (usiServerUrlElement) {
                 const currentValue = usiServerUrlElement.value.trim();
-                // 元のURLが保存されている場合はそれを使用
+                // 元のURLが保存されている場合はそれを使用（最優先）
                 if (usiServerUrlElement.dataset.originalUrl) {
                     usiServerUrl = usiServerUrlElement.dataset.originalUrl;
+                    console.log(`[Game] 先手USI URL取得: dataset.originalUrl = ${usiServerUrl}`);
                 } 
                 // 現在の値がURL形式の場合はそれを使用
                 else if (currentValue && (currentValue.startsWith('http://') || currentValue.startsWith('https://'))) {
                     usiServerUrl = currentValue;
+                    // 元のURLとして保存
+                    usiServerUrlElement.dataset.originalUrl = currentValue;
+                    console.log(`[Game] 先手USI URL取得: 現在の値 = ${usiServerUrl}`);
                 }
-                // それ以外（エンジン名が表示されている場合など）はデフォルト値を使用（既に設定済み）
+                // それ以外（エンジン名が表示されている場合など）はtitle属性からURLを抽出を試みる
+                else if (usiServerUrlElement.title) {
+                    const titleMatch = usiServerUrlElement.title.match(/サーバーURL:\s*(https?:\/\/[^\s\n]+)/);
+                    if (titleMatch && titleMatch[1]) {
+                        usiServerUrl = titleMatch[1];
+                        usiServerUrlElement.dataset.originalUrl = titleMatch[1];
+                        console.log(`[Game] 先手USI URL取得: title属性から = ${usiServerUrl}`);
+                    }
+                }
+                // それでも見つからない場合はデフォルト値を使用（既に設定済み）
+                if (usiServerUrl === 'http://localhost:8080') {
+                    console.warn(`[Game] 先手USI URL: デフォルト値を使用 = ${usiServerUrl}`);
+                }
             }
         } else {
             usiServerUrlElement = document.getElementById('usiServerUrlGote');
             if (usiServerUrlElement) {
                 const currentValue = usiServerUrlElement.value.trim();
-                // 元のURLが保存されている場合はそれを使用
+                // 元のURLが保存されている場合はそれを使用（最優先）
                 if (usiServerUrlElement.dataset.originalUrl) {
                     usiServerUrl = usiServerUrlElement.dataset.originalUrl;
+                    console.log(`[Game] 後手USI URL取得: dataset.originalUrl = ${usiServerUrl}`);
                 } 
                 // 現在の値がURL形式の場合はそれを使用
                 else if (currentValue && (currentValue.startsWith('http://') || currentValue.startsWith('https://'))) {
                     usiServerUrl = currentValue;
+                    // 元のURLとして保存
+                    usiServerUrlElement.dataset.originalUrl = currentValue;
+                    console.log(`[Game] 後手USI URL取得: 現在の値 = ${usiServerUrl}`);
                 }
-                // それ以外（エンジン名が表示されている場合など）はデフォルト値を使用（既に設定済み）
+                // それ以外（エンジン名が表示されている場合など）はtitle属性からURLを抽出を試みる
+                else if (usiServerUrlElement.title) {
+                    const titleMatch = usiServerUrlElement.title.match(/サーバーURL:\s*(https?:\/\/[^\s\n]+)/);
+                    if (titleMatch && titleMatch[1]) {
+                        usiServerUrl = titleMatch[1];
+                        usiServerUrlElement.dataset.originalUrl = titleMatch[1];
+                        console.log(`[Game] 後手USI URL取得: title属性から = ${usiServerUrl}`);
+                    }
+                }
+                // それでも見つからない場合はデフォルト値を使用（既に設定済み）
+                if (usiServerUrl === 'http://localhost:8080') {
+                    console.warn(`[Game] 後手USI URL: デフォルト値を使用 = ${usiServerUrl}`);
+                }
             }
         }
         
+        console.log(`[Game] createAI: ${isSente ? '先手' : '後手'}, USI URL = ${usiServerUrl}`);
         const ai = new ShogiAI(aiLevel, null, ollamaModel, usiServerUrl);
         
         // USIエンジンの場合、エンジン名取得時のコールバックを設定
@@ -152,11 +185,12 @@ export class ShogiGame {
             ai.setEngineNameCallback((engineName, engineAuthor) => {
                 // URL表示欄をエンジン名に変更（編集可能のまま）
                 const displayText = engineAuthor ? `${engineName} (${engineAuthor})` : engineName;
-                const originalUrl = usiServerUrlElement.dataset.originalUrl || usiServerUrl;
-                // 元のURLを保持（編集時に使用）
+                // 元のURLを確実に保持（編集時に使用）
+                // dataset.originalUrlが設定されていない場合は、現在のusiServerUrlを使用
                 if (!usiServerUrlElement.dataset.originalUrl) {
-                    usiServerUrlElement.dataset.originalUrl = usiServerUrl;
+                    usiServerUrlElement.dataset.originalUrl = usiServerUrl || 'http://localhost:8080';
                 }
+                const originalUrl = usiServerUrlElement.dataset.originalUrl;
                 // エンジン名を表示（編集可能）
                 usiServerUrlElement.value = displayText;
                 usiServerUrlElement.title = `エンジン名: ${displayText}\nサーバーURL: ${originalUrl}\n（編集してURLを変更できます）`;
@@ -260,37 +294,47 @@ export class ShogiGame {
             'aiLevelSente': (e) => {
                 this.aiLevelSente = e.target.value;
                 this.aiSente = this.createAI(PLAYER.SENTE);
+                // 対戦モード変更時はゲームを停止
+                this.gameStarted = false;
+                console.log('[Game] 先手AI強さ変更: ゲームを停止しました', { aiLevel: this.aiLevelSente, gameStarted: this.gameStarted });
+                // 進行中のAI思考をクリーンアップ
+                this.cleanupAIMove();
                 // 即座に更新を試みる
                 this.updateAISettingsVisibility();
                 // 遅延更新も実行（確実に反映させるため）
                 this.scheduleAISettingsUpdate();
-                // AIが変更された場合、現在の手番が先手でAIの場合は思考を開始
-                if (this.currentTurn === PLAYER.SENTE && this.isAITurn()) {
-                    setTimeout(() => this.checkAndMakeAIMove(), UI_UPDATE_DELAY);
-                }
             },
             'aiLevelGote': (e) => {
                 this.aiLevelGote = e.target.value;
                 this.aiGote = this.createAI(PLAYER.GOTE);
+                // 対戦モード変更時はゲームを停止
+                this.gameStarted = false;
+                console.log('[Game] 後手AI強さ変更: ゲームを停止しました', { aiLevel: this.aiLevelGote, gameStarted: this.gameStarted });
+                // 進行中のAI思考をクリーンアップ
+                this.cleanupAIMove();
                 // 即座に更新を試みる
                 this.updateAISettingsVisibility();
                 // 遅延更新も実行（確実に反映させるため）
                 this.scheduleAISettingsUpdate();
-                // AIが変更された場合、現在の手番が後手でAIの場合は思考を開始
-                if (this.currentTurn === PLAYER.GOTE && this.isAITurn()) {
-                    setTimeout(() => this.checkAndMakeAIMove(), UI_UPDATE_DELAY);
-                }
             },
             'ollamaModelSente': (e) => {
                 // 先手Ollamaモデルが変更された場合、先手がOllamaモードの場合はAIを再作成
                 if (this.aiLevelSente === AI_LEVEL.OLLAMA) {
                     this.aiSente = this.createAI(PLAYER.SENTE);
+                    // 設定変更時はゲームを停止
+                    this.gameStarted = false;
+                    // 進行中のAI思考をクリーンアップ
+                    this.cleanupAIMove();
                 }
             },
             'ollamaModelGote': (e) => {
                 // 後手Ollamaモデルが変更された場合、後手がOllamaモードの場合はAIを再作成
                 if (this.aiLevelGote === AI_LEVEL.OLLAMA) {
                     this.aiGote = this.createAI(PLAYER.GOTE);
+                    // 設定変更時はゲームを停止
+                    this.gameStarted = false;
+                    // 進行中のAI思考をクリーンアップ
+                    this.cleanupAIMove();
                 }
             },
             'usiServerUrlSente': (e) => {
@@ -304,6 +348,10 @@ export class ShogiGame {
                 // 先手がUSIモードの場合はAIを再作成
                 if (this.aiLevelSente === AI_LEVEL.USI) {
                     this.aiSente = this.createAI(PLAYER.SENTE);
+                    // 設定変更時はゲームを停止
+                    this.gameStarted = false;
+                    // 進行中のAI思考をクリーンアップ
+                    this.cleanupAIMove();
                 }
             },
             'usiServerUrlGote': (e) => {
@@ -317,6 +365,10 @@ export class ShogiGame {
                 // 後手がUSIモードの場合はAIを再作成
                 if (this.aiLevelGote === AI_LEVEL.USI) {
                     this.aiGote = this.createAI(PLAYER.GOTE);
+                    // 設定変更時はゲームを停止
+                    this.gameStarted = false;
+                    // 進行中のAI思考をクリーンアップ
+                    this.cleanupAIMove();
                 }
             },
             'newGameBtn': () => {
@@ -926,6 +978,11 @@ export class ShogiGame {
      * - 後手（GOTE）のターン: AIが後手の手を思考
      */
     checkAndMakeAIMove() {
+        // ゲームが開始されていない場合は何もしない
+        if (!this.gameStarted) {
+            return;
+        }
+        
         // 既にAI思考中なら待機（AI vs AIでの重複リクエスト防止）
         if (this.aiInProgress || this.aiMovePromise) {
             console.debug('[Game] AI思考が既に進行中のため、新しい思考をスキップ', {
