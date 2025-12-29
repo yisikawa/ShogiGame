@@ -13,21 +13,27 @@ export class PieceMoves {
         this.isGote = isGote;
     }
 
+    canMoveTo(row, col, piece) {
+        if (!this.isValidPosition(row, col)) return false;
+        return true;
+    }
+
+
     /**
      * 王の移動可能な位置を取得
      */
-    getKingMoves(row, col) {
+    getKingMoves(row, col, piece) {
         const moves = [];
         const directions = [
             [-1, -1], [-1, 0], [-1, 1],
-            [0, -1],           [0, 1],
-            [1, -1],  [1, 0],  [1, 1]
+            [0, -1], [0, 1],
+            [1, -1], [1, 0], [1, 1]
         ];
-        
+
         for (const [dr, dc] of directions) {
             const newRow = row + dr;
             const newCol = col + dc;
-            if (this.isValidPosition(newRow, newCol)) {
+            if (this.canMoveTo(newRow, newCol, piece)) {
                 moves.push([newRow, newCol]);
             }
         }
@@ -40,14 +46,14 @@ export class PieceMoves {
     getGoldMoves(row, col, piece) {
         const moves = [];
         const isSente = this.isSente(piece);
-        const directions = isSente 
+        const directions = isSente
             ? [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, 0]]
             : [[1, -1], [1, 0], [1, 1], [0, -1], [0, 1], [-1, 0]];
-        
+
         for (const [dr, dc] of directions) {
             const newRow = row + dr;
             const newCol = col + dc;
-            if (this.isValidPosition(newRow, newCol)) {
+            if (this.canMoveTo(newRow, newCol, piece)) {
                 moves.push([newRow, newCol]);
             }
         }
@@ -62,7 +68,7 @@ export class PieceMoves {
         if (isPromoted) {
             return this.getGoldMoves(row, col, piece);
         }
-        
+
         const moves = [];
         const isSente = this.isSente(piece);
         const forward = isSente ? -1 : 1;
@@ -70,11 +76,11 @@ export class PieceMoves {
             [forward, -1], [forward, 0], [forward, 1],
             [-forward, -1], [-forward, 1]
         ];
-        
+
         for (const [dr, dc] of directions) {
             const newRow = row + dr;
             const newCol = col + dc;
-            if (this.isValidPosition(newRow, newCol)) {
+            if (this.canMoveTo(newRow, newCol, piece)) {
                 moves.push([newRow, newCol]);
             }
         }
@@ -89,16 +95,16 @@ export class PieceMoves {
         if (isPromoted) {
             return this.getGoldMoves(row, col, piece);
         }
-        
+
         const moves = [];
         const isSente = this.isSente(piece);
         const forward = isSente ? -2 : 2;
         const directions = [[forward, -1], [forward, 1]];
-        
+
         for (const [dr, dc] of directions) {
             const newRow = row + dr;
             const newCol = col + dc;
-            if (this.isValidPosition(newRow, newCol)) {
+            if (this.canMoveTo(newRow, newCol, piece)) {
                 moves.push([newRow, newCol]);
             }
         }
@@ -113,28 +119,20 @@ export class PieceMoves {
         if (isPromoted) {
             return this.getGoldMoves(row, col, piece);
         }
-        
+
         const moves = [];
         const isSente = this.isSente(piece);
         const forward = isSente ? -1 : 1;
-        
+
         for (let i = 1; i < BOARD_SIZE; i++) {
             const newRow = row + (forward * i);
             if (!this.isValidPosition(newRow, col)) break;
-            
+
             const target = this.board[newRow][col];
             if (target) {
-                // 駒がある場合
-                const isSameSide = (this.isSente(piece) && this.isSente(target)) ||
-                                   (this.isGote(piece) && this.isGote(target));
-                if (isSameSide) {
-                    // 自駒ならそこは進めず、その直前でブロック（何も追加しない）
-                    break;
-                } else {
-                    // 相手駒なら取れるマスとして追加してブロック
-                    moves.push([newRow, col]);
-                    break;
-                }
+                // 駒があれば取れるマスとして追加してブロック
+                moves.push([newRow, col]);
+                break;
             } else {
                 // 空のマスなら追加して続行
                 moves.push([newRow, col]);
@@ -150,20 +148,26 @@ export class PieceMoves {
         const isPromoted = piece.includes('+');
         const moves = [];
         const directions = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
-        
+
         for (const [dr, dc] of directions) {
             for (let i = 1; i < BOARD_SIZE; i++) {
                 const newRow = row + (dr * i);
                 const newCol = col + (dc * i);
                 if (!this.isValidPosition(newRow, newCol)) break;
+
+                const target = this.board[newRow][newCol];
+                if (target) {
+                    moves.push([newRow, newCol]);
+                    break;
+                }
+
                 moves.push([newRow, newCol]);
-                if (this.board[newRow][newCol]) break;
             }
         }
-        
+
         // 成り角（馬）は王の動きも追加
         if (isPromoted) {
-            const kingMoves = this.getKingMoves(row, col);
+            const kingMoves = this.getKingMoves(row, col, piece);
             moves.push(...kingMoves);
         }
         return moves;
@@ -176,20 +180,26 @@ export class PieceMoves {
         const isPromoted = piece.includes('+');
         const moves = [];
         const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
-        
+
         for (const [dr, dc] of directions) {
             for (let i = 1; i < BOARD_SIZE; i++) {
                 const newRow = row + (dr * i);
                 const newCol = col + (dc * i);
                 if (!this.isValidPosition(newRow, newCol)) break;
+
+                const target = this.board[newRow][newCol];
+                if (target) {
+                    moves.push([newRow, newCol]);
+                    break;
+                }
+
                 moves.push([newRow, newCol]);
-                if (this.board[newRow][newCol]) break;
             }
         }
-        
+
         // 成り飛（龍）は王の動きも追加
         if (isPromoted) {
-            const kingMoves = this.getKingMoves(row, col);
+            const kingMoves = this.getKingMoves(row, col, piece);
             moves.push(...kingMoves);
         }
         return moves;
@@ -203,13 +213,13 @@ export class PieceMoves {
         if (isPromoted) {
             return this.getGoldMoves(row, col, piece);
         }
-        
+
         const moves = [];
         const isSente = this.isSente(piece);
         const forward = isSente ? -1 : 1;
         const newRow = row + forward;
-        
-        if (this.isValidPosition(newRow, col)) {
+
+        if (this.canMoveTo(newRow, col, piece)) {
             moves.push([newRow, col]);
         }
         return moves;
@@ -220,9 +230,9 @@ export class PieceMoves {
      */
     getMovesForPiece(row, col, piece) {
         const pieceType = piece.replace('+', '').toLowerCase();
-        
+
         switch (pieceType) {
-            case 'k': return this.getKingMoves(row, col);
+            case 'k': return this.getKingMoves(row, col, piece);
             case 'g': return this.getGoldMoves(row, col, piece);
             case 's': return this.getSilverMoves(row, col, piece);
             case 'n': return this.getKnightMoves(row, col, piece);

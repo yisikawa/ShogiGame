@@ -409,14 +409,34 @@ h1 {
     animation: pulse 1.5s ease-in-out infinite;
 }
 
+.hidden {
+    display: none !important;
+}
+
+/* USIエンジン接続時のスタイル */
+.engine-connected {
+    background-color: #e8f0fe !important;
+    color: #1a73e8 !important;
+    font-weight: bold;
+    border-color: #1a73e8 !important;
+    cursor: default;
+}
+
+.hidden {
+    display: none !important;
+}
+
 .ai-thinking.hidden {
     display: none;
 }
 
 @keyframes pulse {
-    0%, 100% {
+
+    0%,
+    100% {
         opacity: 1;
     }
+
     50% {
         opacity: 0.7;
     }
@@ -736,22 +756,22 @@ h1 {
     .game-board-container {
         flex-direction: column;
     }
-    
+
     .board {
         width: 360px;
         height: 360px;
     }
-    
+
     .captured-pieces {
         width: 360px;
         min-height: 60px;
         flex-direction: row;
     }
-    
+
     .captured-list {
         flex-direction: row;
     }
-    
+
     .piece {
         font-size: 18px;
     }
@@ -784,4 +804,3 @@ h1 {
 .usi-config input:hover {
     border-color: #667eea;
 }
-
