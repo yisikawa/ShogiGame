@@ -79,7 +79,261 @@ export class ShogiGame {
         this.reset();
     }
 
+<<<<<<< HEAD
 
+=======
+    /**
+     * AIインスタンスを作成
+     * @param {string} player - PLAYER.SENTE または PLAYER.GOTE
+     * @returns {ShogiAI|null} - AIインスタンス、または「人間」の場合はnull
+     */
+    createAI(player) {
+        // 先手または後手のAIを作成
+        const isSente = player === PLAYER.SENTE;
+        const aiLevel = isSente ? this.aiLevelSente : this.aiLevelGote;
+        
+        // 「人間」の場合はnullを返す
+        if (aiLevel === AI_LEVEL.HUMAN) {
+            return null;
+        }
+        
+        // Ollamaモデルを取得
+        let ollamaModel = OLLAMA_CONFIG.MODEL;
+        if (isSente) {
+            const ollamaModelInput = document.getElementById('ollamaModelSente');
+            if (ollamaModelInput && ollamaModelInput.value.trim()) {
+                ollamaModel = ollamaModelInput.value.trim();
+            }
+        } else {
+            const ollamaModelInput = document.getElementById('ollamaModelGote');
+            if (ollamaModelInput && ollamaModelInput.value.trim()) {
+                ollamaModel = ollamaModelInput.value.trim();
+            }
+        }
+        
+        // USIサーバーURLを取得（デフォルト: http://localhost:8080）
+        let usiServerUrl = 'http://localhost:8080'; // デフォルト値
+        let usiServerUrlElement = null;
+        if (isSente) {
+            usiServerUrlElement = document.getElementById('usiServerUrlSente');
+            if (usiServerUrlElement) {
+                const currentValue = usiServerUrlElement.value.trim();
+                // 元のURLが保存されている場合はそれを使用（最優先）
+                if (usiServerUrlElement.dataset.originalUrl) {
+                    usiServerUrl = usiServerUrlElement.dataset.originalUrl;
+                    console.log(`[Game] 先手USI URL取得: dataset.originalUrl = ${usiServerUrl}`);
+                } 
+                // 現在の値がURL形式の場合はそれを使用
+                else if (currentValue && (currentValue.startsWith('http://') || currentValue.startsWith('https://'))) {
+                    usiServerUrl = currentValue;
+                    // 元のURLとして保存
+                    usiServerUrlElement.dataset.originalUrl = currentValue;
+                    console.log(`[Game] 先手USI URL取得: 現在の値 = ${usiServerUrl}`);
+                }
+                // それでも見つからない場合はデフォルト値を使用（既に設定済み）
+                if (usiServerUrl === 'http://localhost:8080') {
+                    console.warn(`[Game] 先手USI URL: デフォルト値を使用 = ${usiServerUrl}`);
+                }
+            }
+        } else {
+            usiServerUrlElement = document.getElementById('usiServerUrlGote');
+            if (usiServerUrlElement) {
+                const currentValue = usiServerUrlElement.value.trim();
+                // 元のURLが保存されている場合はそれを使用（最優先）
+                if (usiServerUrlElement.dataset.originalUrl) {
+                    usiServerUrl = usiServerUrlElement.dataset.originalUrl;
+                    console.log(`[Game] 後手USI URL取得: dataset.originalUrl = ${usiServerUrl}`);
+                } 
+                // 現在の値がURL形式の場合はそれを使用
+                else if (currentValue && (currentValue.startsWith('http://') || currentValue.startsWith('https://'))) {
+                    usiServerUrl = currentValue;
+                    // 元のURLとして保存
+                    usiServerUrlElement.dataset.originalUrl = currentValue;
+                    console.log(`[Game] 後手USI URL取得: 現在の値 = ${usiServerUrl}`);
+                }
+                // それでも見つからない場合はデフォルト値を使用（既に設定済み）
+                if (usiServerUrl === 'http://localhost:8080') {
+                    console.warn(`[Game] 後手USI URL: デフォルト値を使用 = ${usiServerUrl}`);
+                }
+            }
+        }
+        
+        console.log(`[Game] createAI: ${isSente ? '先手' : '後手'}, USI URL = ${usiServerUrl}`);
+        const ai = new ShogiAI(aiLevel, null, ollamaModel, usiServerUrl);
+        
+        // USIエンジンの場合、エンジン名取得時のコールバックを設定
+        if (aiLevel === AI_LEVEL.USI && usiServerUrlElement) {
+            // 元のURLを保存（デフォルト値も含む）
+            if (!usiServerUrlElement.dataset.originalUrl) {
+                usiServerUrlElement.dataset.originalUrl = usiServerUrl || 'http://localhost:8080';
+            }
+            
+            // エンジン名表示欄の要素を取得
+            const engineNameElementId = isSente ? 'usiEngineNameSente' : 'usiEngineNameGote';
+            const engineNameElement = document.getElementById(engineNameElementId);
+            
+            ai.setEngineNameCallback((engineName, engineAuthor) => {
+                // エンジン名を表示用テキストに整形
+                const displayText = engineAuthor ? `${engineName} (${engineAuthor})` : engineName;
+                
+                // 元のURLを確実に保持
+                if (!usiServerUrlElement.dataset.originalUrl) {
+                    usiServerUrlElement.dataset.originalUrl = usiServerUrl || 'http://localhost:8080';
+                }
+                
+                // URL入力欄はURLのまま保持（編集可能）
+                // エンジン名は別の要素に表示
+                if (engineNameElement) {
+                    engineNameElement.value = displayText;
+                }
+            });
+            
+            // USIエンジンの初期化は「ニューゲーム」ボタンが押されるまで実行しない
+            // （ニューゲームボタンのイベントハンドラで実行される）
+        }
+        
+        return ai;
+    }
+    
+    /**
+     * USIエンジンを初期化し、新しいゲームを開始する
+     * （ニューゲームボタンが押された時に呼ばれる）
+     */
+    initializeUSIEngines() {
+        const engines = [
+            { ai: this.aiSente, name: '先手' },
+            { ai: this.aiGote, name: '後手' }
+        ];
+        
+        engines.forEach(({ ai, name }) => {
+            if (ai && ai.usiClient) {
+                this.initializeSingleUSIEngine(ai.usiClient, name);
+            }
+        });
+    }
+    
+    /**
+     * 単一のUSIエンジンを初期化し、新しいゲームを開始する
+     * @param {USIClient} usiClient - USIクライアントインスタンス
+     * @param {string} name - エンジン名（先手/後手）
+     */
+    async initializeSingleUSIEngine(usiClient, name) {
+        try {
+            // エンジン初期化（接続とエンジン名取得）
+            await usiClient.initialize();
+            
+            // 初期化成功後、ゲーム開始時にusinewgameを送信
+            await usiClient.sendNewGame();
+        } catch (error) {
+            // エラーハンドリング（初期化エラーまたはusinewgameエラー）
+            console.warn(`[Game] ${name}USIエンジン処理エラー:`, error.message);
+        }
+    }
+    
+    /**
+     * Ollamaモデルが利用可能か確認し、必要に応じて起動する
+     * @param {string} modelName - 確認するモデル名
+     * @param {string} playerName - プレイヤー名（先手/後手）
+     */
+    async checkOllamaModel(modelName, playerName) {
+        if (!modelName || !modelName.trim()) {
+            console.warn(`[Game] ${playerName}Ollamaモデル名が空です`);
+            return;
+        }
+        
+        const endpoint = OLLAMA_CONFIG.ENDPOINT;
+        const timeout = 30000; // 30秒のタイムアウト
+        
+        try {
+            // まずモデル一覧を取得してモデルが存在するか確認
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+            
+            const modelsResponse = await fetch(`${endpoint}/api/tags`, {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' },
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (!modelsResponse.ok) {
+                throw new Error(`Ollamaサーバーに接続できません: ${modelsResponse.status}`);
+            }
+            
+            const modelsData = await modelsResponse.json();
+            const availableModels = modelsData.models || [];
+            const modelExists = availableModels.some(model => {
+                const name = model.name || model.model || '';
+                return name === modelName || name.startsWith(`${modelName}:`);
+            });
+            
+            if (!modelExists) {
+                console.warn(`[Game] ${playerName}Ollamaモデル "${modelName}" が見つかりません。モデルをプルします...`);
+                
+                // モデルが存在しない場合、プルを試みる
+                const pullController = new AbortController();
+                const pullTimeoutId = setTimeout(() => pullController.abort(), timeout * 10); // プルは長めに設定（5分）
+                
+                const pullResponse = await fetch(`${endpoint}/api/pull`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: modelName }),
+                    signal: pullController.signal
+                });
+                
+                if (!pullResponse.ok) {
+                    clearTimeout(pullTimeoutId);
+                    throw new Error(`モデル "${modelName}" のプルに失敗しました: ${pullResponse.status}`);
+                }
+                
+                // ストリーミングレスポンスを処理
+                const reader = pullResponse.body.getReader();
+                const decoder = new TextDecoder();
+                let pullComplete = false;
+                
+                try {
+                    while (!pullComplete) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        
+                        const chunk = decoder.decode(value, { stream: true });
+                        const lines = chunk.split('\n').filter(line => line.trim());
+                        
+                        for (const line of lines) {
+                            try {
+                                const data = JSON.parse(line);
+                                if (data.status) {
+                                    console.log(`[Game] ${playerName}Ollamaモデルプル: ${data.status}`);
+                                }
+                                if (data.status === 'success' || (data.status && data.status.includes('complete'))) {
+                                    console.log(`[Game] ${playerName}Ollamaモデル "${modelName}" のプルが完了しました`);
+                                    pullComplete = true;
+                                    break;
+                                }
+                            } catch (e) {
+                                // JSON解析エラーは無視
+                            }
+                        }
+                    }
+                } finally {
+                    reader.releaseLock();
+                    clearTimeout(pullTimeoutId);
+                }
+            } else {
+                console.log(`[Game] ${playerName}Ollamaモデル "${modelName}" は利用可能です`);
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.error(`[Game] ${playerName}Ollamaモデル確認がタイムアウトしました`);
+            } else {
+                console.error(`[Game] ${playerName}Ollamaモデル確認エラー:`, error.message);
+            }
+            // エラーが発生しても処理は続行（モデルが既に存在する可能性があるため）
+        }
+    }
+    
+>>>>>>> 4653c6a54dde4be9cf81315927a04c71d6127a9e
     /**
      * 現在の手番に応じたAIインスタンスを取得
      */
@@ -154,6 +408,7 @@ export class ShogiGame {
             'resetBtn': () => this.reset(),
             'aiLevelSente': (e) => {
                 this.aiLevelSente = e.target.value;
+<<<<<<< HEAD
                 // USIエンジンが選択された場合、入力欄を編集可能に戻す
                 if (this.aiLevelSente === AI_LEVEL.USI) {
                     this.ui.resetSingleUSIEngineInput('先手');
@@ -162,6 +417,35 @@ export class ShogiGame {
                     setTimeout(() => this.ai.initializeSingleUSIEngine(this.aiSente.usiClient, '先手'), 100);
                 } else {
                     this.aiSente = this.createAI(PLAYER.SENTE);
+=======
+                // USIエンジンが選択された場合、URL表示欄をURL表示に戻し、エンジン名欄をクリア
+                if (this.aiLevelSente === AI_LEVEL.USI) {
+                    const usiServerUrlElement = document.getElementById('usiServerUrlSente');
+                    const engineNameElement = document.getElementById('usiEngineNameSente');
+                    if (usiServerUrlElement) {
+                        // 元のURLが保存されている場合はそれを使用
+                        if (usiServerUrlElement.dataset.originalUrl) {
+                            usiServerUrlElement.value = usiServerUrlElement.dataset.originalUrl;
+                            console.log('[Game] 先手USIエンジン選択: URL表示に戻しました', { url: usiServerUrlElement.dataset.originalUrl });
+                        }
+                        // 現在の値がURL形式の場合はそれを使用
+                        else if (usiServerUrlElement.value && (usiServerUrlElement.value.startsWith('http://') || usiServerUrlElement.value.startsWith('https://'))) {
+                            usiServerUrlElement.dataset.originalUrl = usiServerUrlElement.value;
+                            console.log('[Game] 先手USIエンジン選択: 現在のURLを保持', { url: usiServerUrlElement.value });
+                        }
+                        // それ以外の場合はデフォルト値を使用
+                        else {
+                            const defaultUrl = 'http://localhost:8080';
+                            usiServerUrlElement.value = defaultUrl;
+                            usiServerUrlElement.dataset.originalUrl = defaultUrl;
+                            console.log('[Game] 先手USIエンジン選択: デフォルトURLを使用', { url: defaultUrl });
+                        }
+                    }
+                    // エンジン名欄をクリア
+                    if (engineNameElement) {
+                        engineNameElement.value = '';
+                    }
+>>>>>>> 4653c6a54dde4be9cf81315927a04c71d6127a9e
                 }
                 this.gameStarted = false;
                 this.cleanupAIMove();
@@ -172,6 +456,7 @@ export class ShogiGame {
             },
             'aiLevelGote': (e) => {
                 this.aiLevelGote = e.target.value;
+<<<<<<< HEAD
                 // USIエンジンが選択された場合、入力欄を編集可能に戻す
                 if (this.aiLevelGote === AI_LEVEL.USI) {
                     this.ui.resetSingleUSIEngineInput('後手');
@@ -180,6 +465,35 @@ export class ShogiGame {
                     setTimeout(() => this.ai.initializeSingleUSIEngine(this.aiGote.usiClient, '後手'), 100);
                 } else {
                     this.aiGote = this.createAI(PLAYER.GOTE);
+=======
+                // USIエンジンが選択された場合、URL表示欄をURL表示に戻し、エンジン名欄をクリア
+                if (this.aiLevelGote === AI_LEVEL.USI) {
+                    const usiServerUrlElement = document.getElementById('usiServerUrlGote');
+                    const engineNameElement = document.getElementById('usiEngineNameGote');
+                    if (usiServerUrlElement) {
+                        // 元のURLが保存されている場合はそれを使用
+                        if (usiServerUrlElement.dataset.originalUrl) {
+                            usiServerUrlElement.value = usiServerUrlElement.dataset.originalUrl;
+                            console.log('[Game] 後手USIエンジン選択: URL表示に戻しました', { url: usiServerUrlElement.dataset.originalUrl });
+                        }
+                        // 現在の値がURL形式の場合はそれを使用
+                        else if (usiServerUrlElement.value && (usiServerUrlElement.value.startsWith('http://') || usiServerUrlElement.value.startsWith('https://'))) {
+                            usiServerUrlElement.dataset.originalUrl = usiServerUrlElement.value;
+                            console.log('[Game] 後手USIエンジン選択: 現在のURLを保持', { url: usiServerUrlElement.value });
+                        }
+                        // それ以外の場合はデフォルト値を使用
+                        else {
+                            const defaultUrl = 'http://localhost:8080';
+                            usiServerUrlElement.value = defaultUrl;
+                            usiServerUrlElement.dataset.originalUrl = defaultUrl;
+                            console.log('[Game] 後手USIエンジン選択: デフォルトURLを使用', { url: defaultUrl });
+                        }
+                    }
+                    // エンジン名欄をクリア
+                    if (engineNameElement) {
+                        engineNameElement.value = '';
+                    }
+>>>>>>> 4653c6a54dde4be9cf81315927a04c71d6127a9e
                 }
                 this.gameStarted = false;
                 this.cleanupAIMove();
@@ -764,6 +1078,226 @@ export class ShogiGame {
      * - 先手（SENTE）のターン: AIが先手の手を思考
      * - 後手（GOTE）のターン: AIが後手の手を思考
      */
+<<<<<<< HEAD
+=======
+    checkAndMakeAIMove() {
+        // ゲームが開始されていない場合は何もしない
+        if (!this.gameStarted) {
+            return;
+        }
+        
+        // 既にAI思考中なら待機（AI vs AIでの重複リクエスト防止）
+        if (this.aiInProgress || this.aiMovePromise) {
+            console.debug('[Game] AI思考が既に進行中のため、新しい思考をスキップ', {
+                aiInProgress: this.aiInProgress,
+                hasPromise: !!this.aiMovePromise,
+                currentTurn: this.currentTurn
+            });
+            return;
+        }
+        
+        if (!this.isAITurn() || this.gameOver || this.isReplaying) {
+            return;
+        }
+        
+        if (this.aiStopped) {
+            console.warn('[Game] AIが停止状態のため思考をスキップ（USIエンジン停止）');
+            return;
+        }
+        
+        // フラグを設定（重複呼び出し防止）
+        this.aiInProgress = true;
+        
+        // どちらの手番かを明確にログ出力
+        const playerName = this.currentTurn === PLAYER.SENTE ? '先手' : '後手';
+        const gameModeInfo = `[${playerName}AI思考中]`;
+        
+        this.showAIThinking();
+        
+        // 現在の手番に応じたAIを取得
+        const currentAI = this.getCurrentAI();
+        
+        // AIがnull（人間）の場合はスキップ
+        if (!currentAI) {
+            this.cleanupAIMove();
+            return;
+        }
+        
+        // Ollama/USIの場合は非同期処理
+        if (currentAI.level === AI_LEVEL.OLLAMA || currentAI.level === AI_LEVEL.USI) {
+            const levelName = currentAI.level === AI_LEVEL.OLLAMA ? 'Ollama' : 'USI';
+            const logInfo = {
+                turn: this.currentTurn,
+                player: playerName
+            };
+            if (currentAI.level === AI_LEVEL.OLLAMA) {
+                logInfo.endpoint = currentAI.ollamaEndpoint;
+                logInfo.model = currentAI.ollamaModel;
+            } else {
+                logInfo.serverUrl = currentAI.usiClient && currentAI.usiClient.serverUrl;
+            }
+            console.info(`[Game] ${gameModeInfo} ${levelName} async move start`, logInfo);
+            
+            // 非同期処理を開始し、Promiseを保存（重複防止用）
+            const currentTurn = this.currentTurn;
+            this.aiMovePromise = currentAI.getBestMoveAsync(this, currentTurn)
+                    .then(move => {
+                        // ゲーム状態が変わっていないか確認
+                        if (this.gameOver || this.isReplaying || this.currentTurn !== currentTurn) {
+                            console.warn('[Game] ゲーム状態が変更されたため、AIの手をスキップ', {
+                                gameOver: this.gameOver,
+                                isReplaying: this.isReplaying,
+                                expectedTurn: currentTurn,
+                                actualTurn: this.currentTurn
+                            });
+                            this.cleanupAIMove();
+                            return;
+                        }
+                        
+                        if (move) {
+                            const playerName = currentTurn === PLAYER.SENTE ? '先手' : '後手';
+                            console.info(`[Game] [${playerName}AI] の手を適用`, {
+                                type: move.type,
+                                player: playerName,
+                                turn: currentTurn,
+                                move: move.type === 'move' 
+                                    ? `${move.fromRow},${move.fromCol} → ${move.toRow},${move.toCol}`
+                                    : `${move.piece}打 → ${move.toRow},${move.toCol}`
+                            });
+                            
+                            // 手を適用する前にクリーンアップ（次の思考の準備）
+                            // 注意: movePiece/dropPiece内で次のAI思考が開始されるため、
+                            // ここではクリーンアップのみ実行（aiInProgressフラグをリセット）
+                            this.aiInProgress = false;
+                            this.hideAIThinking();
+                            
+                            // 手を適用（movePiece/dropPiece内で次のAI思考が開始される）
+                            if (move.type === 'move') {
+                                // USIエンジンのbestmoveの成りフラグを反映
+                                const promote = move.promoted === true ? true : (move.promoted === false ? false : null);
+                                this.movePiece(move.fromRow, move.fromCol, move.toRow, move.toCol, promote);
+                            } else if (move.type === 'drop') {
+                                this.dropPiece(move.piece, move.toRow, move.toCol);
+                            }
+                        } else {
+                            const playerName = currentTurn === PLAYER.SENTE ? '先手' : '後手';
+                            console.warn(`[Game] [${playerName}AI] が手を返しませんでした（投了またはエラー）`, {
+                                player: playerName,
+                                turn: currentTurn
+                            });
+                            this.cleanupAIMove();
+                        }
+                    })
+                    .catch(error => {
+                        const playerName = currentTurn === PLAYER.SENTE ? '先手' : '後手';
+                        console.error(`[Game] [${playerName}AI] 手取得エラー:`, {
+                            error: error.message,
+                            stack: error.stack,
+                            level: currentAI.level,
+                            player: playerName,
+                            turn: currentTurn
+                        });
+                        
+                        this.cleanupAIMove();
+                        
+                        if (currentAI.level === AI_LEVEL.USI && error.message && error.message.includes('エンジン')) {
+                            this.aiStopped = true;
+                            console.error('[Game] USIエンジン停止を検知。AIを停止します。', { error: error.message });
+                        }
+                    })
+                    .finally(() => {
+                        // Promiseをクリア
+                        this.aiMovePromise = null;
+                    });
+        } else {
+            // 通常のAIは従来通り
+            const playerName = this.currentTurn === PLAYER.SENTE ? '先手' : '後手';
+            const thinkingTime = AI_THINKING_TIME.MIN + Math.random() * (AI_THINKING_TIME.MAX - AI_THINKING_TIME.MIN);
+            
+            console.info(`[Game] [${playerName}AI思考中] 通常AI思考開始`, {
+                player: playerName,
+                turn: this.currentTurn,
+                thinkingTime: `${thinkingTime}ms`
+            });
+            
+            const currentTurn = this.currentTurn;
+            this.aiMoveTimeout = setTimeout(() => {
+                // ゲーム状態が変わっていないか確認
+                if (this.gameOver || this.isReplaying || this.currentTurn !== currentTurn) {
+                    console.warn('[Game] ゲーム状態が変更されたため、AIの手をスキップ', {
+                        gameOver: this.gameOver,
+                        isReplaying: this.isReplaying,
+                        expectedTurn: currentTurn,
+                        actualTurn: this.currentTurn
+                    });
+                    this.cleanupAIMove();
+                    return;
+                }
+                
+                const move = currentAI.getBestMove(this, currentTurn);
+                if (move) {
+                    const appliedPlayerName = currentTurn === PLAYER.SENTE ? '先手' : '後手';
+                    console.info(`[Game] [${appliedPlayerName}AI] の手を適用`, {
+                        player: appliedPlayerName,
+                        turn: currentTurn,
+                        type: move.type
+                    });
+                    // 手を適用する前にクリーンアップ（次の思考の準備）
+                    this.aiInProgress = false;
+                    this.hideAIThinking();
+                    
+                    // 手を適用（movePiece/dropPiece内で次のAI思考が開始される）
+                    if (move.type === 'move') {
+                        this.movePiece(move.fromRow, move.fromCol, move.toRow, move.toCol);
+                    } else if (move.type === 'drop') {
+                        this.dropPiece(move.piece, move.toRow, move.toCol);
+                    }
+                } else {
+                    this.cleanupAIMove();
+                }
+            }, thinkingTime);
+        }
+    }
+
+    /**
+     * AI思考中を表示
+     */
+    showAIThinking() {
+        const thinkingElement = document.getElementById('aiThinking');
+        if (thinkingElement) {
+            thinkingElement.classList.remove('hidden');
+        }
+    }
+
+    /**
+     * AI思考中を非表示
+     */
+    hideAIThinking() {
+        const thinkingElement = document.getElementById('aiThinking');
+        if (thinkingElement) {
+            thinkingElement.classList.add('hidden');
+        }
+    }
+    
+    /**
+     * AI思考のクリーンアップ（フラグとタイムアウトのリセット）
+     */
+    cleanupAIMove() {
+        this.hideAIThinking();
+        this.aiInProgress = false;
+        
+        // タイムアウトをクリア
+        if (this.aiMoveTimeout) {
+            clearTimeout(this.aiMoveTimeout);
+            this.aiMoveTimeout = null;
+        }
+        
+        // Promiseはfinallyブロックでクリアされるが、エラー時や早期リターン時の安全性のため
+        // ここでもクリア（ただし、進行中のPromiseをキャンセルしないよう注意）
+        // 通常はfinallyブロックで処理されるため、ここではコメントアウト
+        // this.aiMovePromise = null;
+    }
+>>>>>>> 4653c6a54dde4be9cf81315927a04c71d6127a9e
 
     /**
      * 全ての可能な手を取得

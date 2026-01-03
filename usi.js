@@ -455,8 +455,67 @@ export class USIClient {
         return await initializePromise;
     }
 
+<<<<<<< HEAD
     boardToSFEN(game) {
         return usiUtils.boardToSFEN(game);
+=======
+    /**
+     * 盤面をSFEN形式に変換
+     * 
+     * @param {Object} game - ゲーム状態
+     * @param {string} gameMode - ゲームモード（オプション、人間対AIモードの判定用）
+     * @param {string} turn - 手番 ('sente' または 'gote') - オプション、指定されない場合はgame.currentTurnを使用
+     */
+    boardToSFEN(game, gameMode = null, turn = null) {
+        let sfen = '';
+        
+        // 盤面をSFEN形式に変換
+        // SFEN: 9段目（上段）から1段目（下段）へ、各段は9筋（右端）から1筋（左端）へ
+        // 内部: 行0（上段）から行8（下段）へ、列0（左端）から列8（右端）へ
+        for (let row = 0; row < BOARD_SIZE; row++) {
+            let emptyCount = 0;
+            // 右から左へ（列8から列0へ）
+            for (let col = 8; col >= 0; col--) {
+                const piece = game.board[row][col];
+                if (!piece) {
+                    emptyCount++;
+                } else {
+                    if (emptyCount > 0) {
+                        sfen += emptyCount;
+                        emptyCount = 0;
+                    }
+                    sfen += this.pieceToUSI(piece);
+                }
+            }
+            if (emptyCount > 0) {
+                sfen += emptyCount;
+            }
+            if (row < BOARD_SIZE - 1) {
+                sfen += '/';
+            }
+        }
+
+        // 手番をSFEN形式に変換
+        // USIプロトコル: b = 先手(sente/black), w = 後手(gote/white)
+        // SFEN形式では、実際のゲームの現在の手番を正しく反映する必要がある
+        // turnパラメータが指定されている場合はそれを使用、そうでない場合はgame.currentTurnを使用
+        const actualTurn = turn || game.currentTurn;
+        // sente → 'b' (先手), gote → 'w' (後手)
+        sfen += ' ' + (actualTurn === 'sente' ? 'b' : 'w');
+
+        // 持ち駒（先手、後手の順）
+        // USIプロトコルでは、両方の持ち駒を必ず指定する必要がある
+        const senteHand = this.formatHand(game.capturedPieces.sente);
+        const goteHand = this.formatHand(game.capturedPieces.gote);
+        sfen += ' ' + (senteHand || '-');
+        sfen += ' ' + (goteHand || '-'); // 後手の持ち駒も必ず指定
+
+        // 手数
+        const moveCount = game.moveHistory ? game.moveHistory.length : 0;
+        sfen += ' ' + (moveCount + 1);
+
+        return sfen;
+>>>>>>> 4653c6a54dde4be9cf81315927a04c71d6127a9e
     }
 
     pieceToUSI(piece) {
@@ -519,21 +578,167 @@ export class USIClient {
         if (!this.engineReady) await this.initialize();
 
         try {
+<<<<<<< HEAD
             const sfen = this.boardToSFEN(game);
             await this.sendPosition(sfen);
             const data = await this.performGo(timeLimit);
+=======
+            // 局面設定
+            const positionStartTime = performance.now();
+            
+            // 現在の局面のSFENを計算（手番を正しく反映）
+            // turnパラメータを使用して、現在の手番を正しく設定
+            const currentSfen = this.boardToSFEN(game, gameMode, turn);
+            
+            // 手の履歴をUSI形式に変換（全ての手：対戦相手の移動も含む）
+            const usiMoves = [];
+            if (game.moveHistory && game.moveHistory.length > 0) {
+                for (let i = 0; i < game.moveHistory.length; i++) {
+                    const move = game.moveHistory[i];
+                    // moveHistoryの各手にはturn情報が含まれている
+                    const moveTurn = move.turn || 'sente'; // デフォルトは先手
+                    const usiMove = this.moveToUSI(move, moveTurn);
+                    if (usiMove) {
+                        usiMoves.push(usiMove);
+                        // デバッグ: 変換結果を確認
+                        this.debugLog('info', `moveHistory[${i}] → USI変換`, {
+                            moveIndex: i,
+                            move: {
+                                type: move.type,
+                                fromRow: move.fromRow,
+                                fromCol: move.fromCol,
+                                toRow: move.toRow,
+                                toCol: move.toCol,
+                                piece: move.piece,
+                                turn: moveTurn,
+                                promoted: move.promoted
+                            },
+                            usiMove: usiMove,
+                            // 座標変換の詳細
+                            coordinateConversion: {
+                                fromUsiCol: 9 - move.fromCol,
+                                fromUsiRow: 8 - move.fromRow,
+                                toUsiCol: 9 - move.toCol,
+                                toUsiRow: 8 - move.toRow,
+                                fromRowChar: String.fromCharCode('a'.charCodeAt(0) + (8 - move.fromRow)),
+                                toRowChar: String.fromCharCode('a'.charCodeAt(0) + (8 - move.toRow))
+                            }
+                        });
+                    } else {
+                        this.debugLog('warn', `moveHistory[${i}]のUSI変換に失敗`, {
+                            moveIndex: i,
+                            move: move
+                        });
+                    }
+                }
+            }
+            
+            this.debugLog('info', '局面設定リクエスト送信', {
+                sfen: currentSfen,
+                turn: turn,
+                player: playerName,
+                gameCurrentTurn: game.currentTurn,
+                moveCount: game.moveHistory ? game.moveHistory.length : 0,
+                movesCount: usiMoves.length,
+                moves: usiMoves,
+                moveHistory: game.moveHistory ? game.moveHistory.map((m, i) => ({
+                    index: i,
+                    type: m.type,
+                    fromRow: m.fromRow,
+                    fromCol: m.fromCol,
+                    toRow: m.toRow,
+                    toCol: m.toCol,
+                    piece: m.piece,
+                    turn: m.turn
+                })) : [],
+                url: `${this.serverUrl}/usi/position`
+            });
+            
+            // 重複リクエストのチェック（同じSFENの場合はスキップ）
+            const positionKey = `${currentSfen}:${usiMoves.length}`;
+            if (this.lastPositionSfen === positionKey && this.pendingPositionRequest) {
+                this.debugLog('warn', '同じ局面のpositionリクエストが既に送信中です。待機します...');
+                // 既存のリクエストが完了するまで待機
+                try {
+                    await this.pendingPositionRequest;
+                } catch (error) {
+                    // 既存のリクエストがエラーでも続行
+                    this.debugLog('warn', '既存のpositionリクエストがエラーでした', { error: error.message });
+                }
+            }
+            
+            // usinewgameはゲーム開始時（reset()）にのみ送信される
+            // ここでは送信しない
+            
+            // AbortControllerを作成
+            const positionAbortController = new AbortController();
+            this.requestAbortController = positionAbortController;
+            
+            // positionリクエストを保存
+            const positionPromise = fetch(`${this.serverUrl}/usi/position`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sfen: currentSfen,
+                    moves: usiMoves
+                }),
+                signal: positionAbortController.signal
+            });
+            
+            this.pendingPositionRequest = positionPromise;
+            this.lastPositionSfen = positionKey;
+            
+            const response = await positionPromise;
+>>>>>>> 4653c6a54dde4be9cf81315927a04c71d6127a9e
 
             if (!data || !data.bestmove || data.bestmove === 'resign' || data.bestmove === 'win') {
                 this.log(LOG_LEVEL.WARN, '有効な指し手がありません', { bestmove: data?.bestmove });
                 return null;
             }
 
+<<<<<<< HEAD
             const parsedMove = this.parseUSIMove(data.bestmove, game, turn);
             const totalElapsed = (performance.now() - totalStartTime).toFixed(2);
             this.log(LOG_LEVEL.INFO, '最善手取得完了', {
                 turn,
                 bestmove: data.bestmove,
                 elapsed: `${totalElapsed}ms`
+=======
+            // USI形式の手を内部形式に変換
+            const parseStartTime = performance.now();
+            const parsedMove = this.parseUSIMove(usiMove, game, turn);
+            const parseElapsed = (performance.now() - parseStartTime).toFixed(2);
+            
+            if (!parsedMove) {
+                const errorMsg = `USI形式の手を内部形式に変換できませんでした: ${usiMove}`;
+                this.debugLog('error', '手の変換失敗', {
+                    usiMove: usiMove,
+                    turn: turn,
+                    player: playerName
+                });
+                console.groupEnd();
+                throw new Error(errorMsg);
+            }
+            
+            this.debugLog('success', '手の変換完了', {
+                usiMove: usiMove,
+                parsedMove: parsedMove,
+                turn: turn,
+                player: playerName,
+                elapsed: `${parseElapsed}ms`
+            });
+            
+            const totalElapsed = (performance.now() - totalStartTime).toFixed(2);
+            this.debugLog('info', '最善手取得完了', {
+                turn: turn,
+                player: playerName,
+                totalElapsed: `${totalElapsed}ms`,
+                breakdown: {
+                    position: `${positionElapsed}ms`,
+                    go: `${goElapsed}ms`,
+                    parse: `${parseElapsed}ms`
+                }
+>>>>>>> 4653c6a54dde4be9cf81315927a04c71d6127a9e
             });
 
             return parsedMove;
@@ -631,7 +836,152 @@ export class USIClient {
         this.pendingNewGameRequest = null;
         this.pendingPositionRequest = null;
         this.pendingGoRequest = null;
+<<<<<<< HEAD
         this.log(LOG_LEVEL.INFO, '進行中のリクエストをキャンセルしました');
+=======
+        this.debugLog('info', '進行中のリクエストをキャンセルしました');
+    }
+
+    /**
+     * USI形式の手を内部形式に変換
+     * 
+     * @param {string} usiMove - USI形式の手（例: "7g7f" または "P*5e"）
+     * @param {Object} game - ゲーム状態
+     * @param {string} turn - 手番 ('sente' または 'gote')
+     */
+    parseUSIMove(usiMove, game, turn) {
+        // USI形式: "7g7f" (移動) または "P*5e" (打ち)
+        // USI座標系: 筋1-9(右→左), 段a-i(下→上)
+        // 内部座標系: 列0-8(左→右), 行0-8(上→下)
+        
+        if (usiMove.includes('*')) {
+            // 打ち: "P*5e"
+            const match = usiMove.match(/^([A-Z])\*(\d)([a-i])$/);
+            if (!match) return null;
+
+            const piece = match[1].toLowerCase();
+            const usiCol = parseInt(match[2]); // 1-9
+            const usiRow = match[3].charCodeAt(0) - 'a'.charCodeAt(0); // 0-8 (a=0, i=8)
+            
+            const col = 9 - usiCol; // 内部列: 9-1 = 8-0
+            const row = usiRow; // 内部行: USI段a(0)→内部行0, USI段i(8)→内部行8
+
+            return {
+                type: 'drop',
+                piece: piece,
+                toRow: row,
+                toCol: col
+            };
+        } else {
+            // 移動: "7g7f" または "7g7f+"
+            const match = usiMove.match(/^(\d)([a-i])(\d)([a-i])(\+?)$/);
+            if (!match) return null;
+
+            const fromUsiCol = parseInt(match[1]);
+            const fromUsiRow = match[2].charCodeAt(0) - 'a'.charCodeAt(0);
+            const toUsiCol = parseInt(match[3]);
+            const toUsiRow = match[4].charCodeAt(0) - 'a'.charCodeAt(0);
+            const promote = match[5] === '+';
+
+            const fromCol = 9 - fromUsiCol;
+            const fromRow = fromUsiRow; // USI段a(0)→内部行0, USI段i(8)→内部行8
+            const toCol = 9 - toUsiCol;
+            const toRow = toUsiRow; // USI段a(0)→内部行0, USI段i(8)→内部行8
+
+            // 移動元の駒が存在し、正しい手番の駒かどうかを検証
+            const piece = game.board[fromRow] && game.board[fromRow][fromCol];
+            if (!piece) {
+                this.debugLog('error', '移動元に駒が存在しません', {
+                    usiMove: usiMove,
+                    fromRow: fromRow,
+                    fromCol: fromCol,
+                    turn: turn
+                });
+                return null;
+            }
+
+            // 人間対AIモードの場合、USIエンジンは後手として思考しているため、
+            // 後手の駒のみを動かす手を許可
+            const effectiveGameMode = game.gameMode;
+            if (effectiveGameMode === 'human-vs-ai') {
+                // 後手の駒かどうかを検証（game.isGoteメソッドを使用）
+                if (!game.isGote(piece)) {
+                    this.debugLog('error', '人間対AIモード: 先手の駒を動かそうとしています（後手の駒のみ許可）', {
+                        usiMove: usiMove,
+                        piece: piece,
+                        fromRow: fromRow,
+                        fromCol: fromCol,
+                        turn: turn,
+                        isGotePiece: game.isGote(piece),
+                        isSentePiece: game.isSente(piece)
+                    });
+                    return null;
+                }
+            } else {
+                // 通常モード: 手番に応じた駒かどうかを検証
+                if (turn === 'sente' && !game.isSente(piece)) {
+                    this.debugLog('error', '先手のターンですが、後手の駒を動かそうとしています', {
+                        usiMove: usiMove,
+                        piece: piece,
+                        fromRow: fromRow,
+                        fromCol: fromCol,
+                        turn: turn
+                    });
+                    return null;
+                }
+                
+                if (turn === 'gote' && !game.isGote(piece)) {
+                    this.debugLog('error', '後手のターンですが、先手の駒を動かそうとしています', {
+                        usiMove: usiMove,
+                        piece: piece,
+                        fromRow: fromRow,
+                        fromCol: fromCol,
+                        turn: turn
+                    });
+                    return null;
+                }
+            }
+
+            return {
+                type: 'move',
+                fromRow: fromRow,
+                fromCol: fromCol,
+                toRow: toRow,
+                toCol: toCol,
+                promoted: promote
+            };
+        }
+    }
+
+    /**
+     * 内部形式の手をUSI形式に変換
+     * @param {Object} move - 手の情報
+     * @param {string} turn - 手番 ('sente' または 'gote')
+     */
+    moveToUSI(move, turn = 'sente') {
+        if (move.type === 'drop') {
+            // 打ち手の場合、先手は大文字、後手は小文字
+            const piece = turn === 'sente' ? move.piece.toUpperCase() : move.piece.toLowerCase();
+            const usiCol = 9 - move.toCol; // 内部列→USI筋
+            // 内部行→USI段の変換: parseUSIMoveで row = 8 - usiRow なので、逆変換は usiRow = 8 - row
+            // しかし、実際のテストでは内部行6→USI段gが正しい
+            // 内部行6（上から7番目）→ USI段g（下から7番目）
+            // USI段g = 'g' = 7番目の文字（a=0, b=1, ..., g=6）
+            // つまり、内部行をそのまま使用する必要がある
+            const usiRow = move.toRow; // 内部行をそのまま使用
+            const row = String.fromCharCode('a'.charCodeAt(0) + usiRow);
+            return `${piece}*${usiCol}${row}`;
+        } else {
+            const fromUsiCol = 9 - move.fromCol;
+            const fromUsiRow = move.fromRow; // 内部行をそのまま使用
+            const toUsiCol = 9 - move.toCol;
+            const toUsiRow = move.toRow; // 内部行をそのまま使用
+            const fromRow = String.fromCharCode('a'.charCodeAt(0) + fromUsiRow);
+            const toRow = String.fromCharCode('a'.charCodeAt(0) + toUsiRow);
+            const promote = move.promoted ? '+' : '';
+            return `${fromUsiCol}${fromRow}${toUsiCol}${toRow}${promote}`;
+        }
+>>>>>>> 4653c6a54dde4be9cf81315927a04c71d6127a9e
     }
 
     /**

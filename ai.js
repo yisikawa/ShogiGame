@@ -65,13 +65,11 @@ export class ShogiAI {
             case AI_LEVEL.ADVANCED:
                 return this.getAdvancedMove(allMoves, game, turn);
             case AI_LEVEL.OLLAMA:
-                // Ollamaは非同期なので、ここではフォールバック
-                // 実際の呼び出しはgetBestMoveAsync()を使用
-                return this.getIntermediateMove(allMoves, game, turn);
+                // Ollamaは非同期なので、getBestMoveAsync()を使用する必要があります
+                throw new Error('Ollamaは非同期AIです。getBestMoveAsync()を使用してください。');
             case AI_LEVEL.USI:
-                // USIは非同期なので、ここではフォールバック
-                // 実際の呼び出しはgetBestMoveAsync()を使用
-                return this.getIntermediateMove(allMoves, game, turn);
+                // USIは非同期なので、getBestMoveAsync()を使用する必要があります
+                throw new Error('USIは非同期AIです。getBestMoveAsync()を使用してください。');
             default:
                 return this.getIntermediateMove(allMoves, game, turn);
         }
@@ -432,17 +430,18 @@ export class ShogiAI {
         if (allMoves.length === 0) return null;
 
         if (this.level === AI_LEVEL.OLLAMA) {
-            return this.getOllamaMoveWithFallback(allMoves, game, turn);
+            return this.getOllamaMove(allMoves, game, turn);
         } else if (this.level === AI_LEVEL.USI) {
-            return this.getUSIMoveWithFallback(allMoves, game, turn);
+            return this.getUSIMove(allMoves, game, turn);
         } else {
             return this.getBestMove(game, turn);
         }
     }
 
     /**
-     * Ollamaを使用して手を取得（フォールバック付き）
+     * USIを使用して手を取得
      */
+<<<<<<< HEAD
     async getOllamaMoveWithFallback(allMoves, game, turn) {
         try {
             this.logMoveStart('Ollama', { endpoint: this.ollamaEndpoint, model: this.ollamaModel, turn, moves: allMoves.length });
@@ -508,7 +507,49 @@ export class ShogiAI {
             const fallbackMove = this.getIntermediateMove(allMoves, game, turn);
             this.logFallbackMove(fallbackMove);
             return fallbackMove;
+=======
+    async getUSIMove(allMoves, game, turn) {
+        // ゲーム終了状態をチェック
+        if (game.gameOver) {
+            console.info('[AI] ゲーム終了のため、USIリクエストをスキップします', {
+                gameOver: game.gameOver,
+                winner: game.winner
+            });
+            return null;
+>>>>>>> 4653c6a54dde4be9cf81315927a04c71d6127a9e
         }
+        
+        if (!this.usiClient) {
+            throw new Error('USIクライアントが初期化されていません');
+        }
+        
+        const playerName = turn === 'sente' ? '先手' : '後手';
+        // 人間対AIモードの場合、USIエンジンは後手として思考する
+        const usiTurn = game.gameMode === 'human-vs-ai' ? 'gote' : turn;
+        const usiPlayerName = usiTurn === 'sente' ? '先手' : '後手';
+        
+        this.logMoveStart('USI', {
+            serverUrl: this.usiClient.serverUrl,
+            turn: turn,
+            player: playerName,
+            usiTurn: usiTurn,
+            usiPlayer: usiPlayerName,
+            gameMode: game.gameMode,
+            timeout: this.usiTimeout,
+            possibleMoves: allMoves.length
+        });
+        
+        const moveStartTime = performance.now();
+        const move = await this.usiClient.getBestMove(game, usiTurn, this.usiTimeout, game.gameMode);
+        const moveElapsed = (performance.now() - moveStartTime).toFixed(2);
+        
+        if (move) {
+            this.logMoveSuccess('USI', move, moveElapsed);
+        } else {
+            throw new Error('USIが手を返しませんでした');
+        }
+        
+        return move;
     }
 
     /**
@@ -533,6 +574,7 @@ export class ShogiAI {
         });
     }
 
+<<<<<<< HEAD
     /**
      * フォールバック手をログに記録
      */
@@ -543,6 +585,8 @@ export class ShogiAI {
 
         console.info('[AI] 中級AIにフォールバック', { fallbackMove: moveDescription });
     }
+=======
+>>>>>>> 4653c6a54dde4be9cf81315927a04c71d6127a9e
 
     /**
      * Ollamaを使用して手を取得
@@ -564,7 +608,8 @@ export class ShogiAI {
             }
         }).join('\n');
 
-        const prompt = `あなたは将棋のAIです。以下の局面で最善手を選んでください。
+        const playerName = turn === 'sente' ? '先手' : '後手';
+        const prompt = `あなたは将棋のAIです。現在は${playerName}の番です。以下の局面で最善手を選んでください。
 
 ${positionText}
 
@@ -572,6 +617,8 @@ ${positionText}
 ${movesText}
 
 上記の合法手の中から、最善と思われる手の番号（1, 2, 3...）だけを回答してください。番号以外は書かないでください。`;
+
+        this.logMoveStart('Ollama', { endpoint: this.ollamaEndpoint, model: this.ollamaModel, turn, moves: allMoves.length });
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -601,12 +648,18 @@ ${movesText}
             if (match) {
                 const moveIndex = parseInt(match[0]) - 1;
                 if (moveIndex >= 0 && moveIndex < allMoves.length) {
-                    return allMoves[moveIndex];
+                    const move = allMoves[moveIndex];
+                    this.logMoveSuccess('Ollama', move, '');
+                    return move;
                 }
             }
 
-            console.warn('[Ollama] invalid response format', { answer });
-            return null;
+            throw new Error(`Ollamaの応答が無効です: ${answer}`);
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                throw new Error('Ollama API呼び出しがタイムアウトしました');
+            }
+            throw error;
         } finally {
             clearTimeout(timeoutId);
         }
