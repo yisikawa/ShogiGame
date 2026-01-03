@@ -1263,7 +1263,9 @@ export class ShogiGame {
                             
                             // 手を適用（movePiece/dropPiece内で次のAI思考が開始される）
                             if (move.type === 'move') {
-                                this.movePiece(move.fromRow, move.fromCol, move.toRow, move.toCol);
+                                // USIエンジンのbestmoveの成りフラグを反映
+                                const promote = move.promoted === true ? true : (move.promoted === false ? false : null);
+                                this.movePiece(move.fromRow, move.fromCol, move.toRow, move.toCol, promote);
                             } else if (move.type === 'drop') {
                                 this.dropPiece(move.piece, move.toRow, move.toCol);
                             }
