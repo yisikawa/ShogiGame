@@ -126,15 +126,6 @@ export class ShogiGame {
                     usiServerUrlElement.dataset.originalUrl = currentValue;
                     console.log(`[Game] 先手USI URL取得: 現在の値 = ${usiServerUrl}`);
                 }
-                // それ以外（エンジン名が表示されている場合など）はtitle属性からURLを抽出を試みる
-                else if (usiServerUrlElement.title) {
-                    const titleMatch = usiServerUrlElement.title.match(/サーバーURL:\s*(https?:\/\/[^\s\n]+)/);
-                    if (titleMatch && titleMatch[1]) {
-                        usiServerUrl = titleMatch[1];
-                        usiServerUrlElement.dataset.originalUrl = titleMatch[1];
-                        console.log(`[Game] 先手USI URL取得: title属性から = ${usiServerUrl}`);
-                    }
-                }
                 // それでも見つからない場合はデフォルト値を使用（既に設定済み）
                 if (usiServerUrl === 'http://localhost:8080') {
                     console.warn(`[Game] 先手USI URL: デフォルト値を使用 = ${usiServerUrl}`);
@@ -156,15 +147,6 @@ export class ShogiGame {
                     usiServerUrlElement.dataset.originalUrl = currentValue;
                     console.log(`[Game] 後手USI URL取得: 現在の値 = ${usiServerUrl}`);
                 }
-                // それ以外（エンジン名が表示されている場合など）はtitle属性からURLを抽出を試みる
-                else if (usiServerUrlElement.title) {
-                    const titleMatch = usiServerUrlElement.title.match(/サーバーURL:\s*(https?:\/\/[^\s\n]+)/);
-                    if (titleMatch && titleMatch[1]) {
-                        usiServerUrl = titleMatch[1];
-                        usiServerUrlElement.dataset.originalUrl = titleMatch[1];
-                        console.log(`[Game] 後手USI URL取得: title属性から = ${usiServerUrl}`);
-                    }
-                }
                 // それでも見つからない場合はデフォルト値を使用（既に設定済み）
                 if (usiServerUrl === 'http://localhost:8080') {
                     console.warn(`[Game] 後手USI URL: デフォルト値を使用 = ${usiServerUrl}`);
@@ -177,25 +159,29 @@ export class ShogiGame {
         
         // USIエンジンの場合、エンジン名取得時のコールバックを設定
         if (aiLevel === AI_LEVEL.USI && usiServerUrlElement) {
-            // 元のURLを保存（エンジン名表示用、デフォルト値も含む）
+            // 元のURLを保存（デフォルト値も含む）
             if (!usiServerUrlElement.dataset.originalUrl) {
                 usiServerUrlElement.dataset.originalUrl = usiServerUrl || 'http://localhost:8080';
             }
             
+            // エンジン名表示欄の要素を取得
+            const engineNameElementId = isSente ? 'usiEngineNameSente' : 'usiEngineNameGote';
+            const engineNameElement = document.getElementById(engineNameElementId);
+            
             ai.setEngineNameCallback((engineName, engineAuthor) => {
-                // URL表示欄をエンジン名に変更（編集可能のまま）
+                // エンジン名を表示用テキストに整形
                 const displayText = engineAuthor ? `${engineName} (${engineAuthor})` : engineName;
-                // 元のURLを確実に保持（編集時に使用）
-                // dataset.originalUrlが設定されていない場合は、現在のusiServerUrlを使用
+                
+                // 元のURLを確実に保持
                 if (!usiServerUrlElement.dataset.originalUrl) {
                     usiServerUrlElement.dataset.originalUrl = usiServerUrl || 'http://localhost:8080';
                 }
-                const originalUrl = usiServerUrlElement.dataset.originalUrl;
-                // エンジン名を表示（編集可能）
-                usiServerUrlElement.value = displayText;
-                usiServerUrlElement.title = `エンジン名: ${displayText}\nサーバーURL: ${originalUrl}\n（編集してURLを変更できます）`;
-                // 編集可能であることを明示
-                usiServerUrlElement.readOnly = false;
+                
+                // URL入力欄はURLのまま保持（編集可能）
+                // エンジン名は別の要素に表示
+                if (engineNameElement) {
+                    engineNameElement.value = displayText;
+                }
             });
             
             // USIエンジンの初期化は「ニューゲーム」ボタンが押されるまで実行しない
@@ -434,20 +420,19 @@ export class ShogiGame {
             'resetBtn': () => this.reset(),
             'aiLevelSente': (e) => {
                 this.aiLevelSente = e.target.value;
-                // USIエンジンが選択された場合、URL表示欄をURL表示に戻す
+                // USIエンジンが選択された場合、URL表示欄をURL表示に戻し、エンジン名欄をクリア
                 if (this.aiLevelSente === AI_LEVEL.USI) {
                     const usiServerUrlElement = document.getElementById('usiServerUrlSente');
+                    const engineNameElement = document.getElementById('usiEngineNameSente');
                     if (usiServerUrlElement) {
                         // 元のURLが保存されている場合はそれを使用
                         if (usiServerUrlElement.dataset.originalUrl) {
                             usiServerUrlElement.value = usiServerUrlElement.dataset.originalUrl;
-                            usiServerUrlElement.title = '';
                             console.log('[Game] 先手USIエンジン選択: URL表示に戻しました', { url: usiServerUrlElement.dataset.originalUrl });
                         }
                         // 現在の値がURL形式の場合はそれを使用
                         else if (usiServerUrlElement.value && (usiServerUrlElement.value.startsWith('http://') || usiServerUrlElement.value.startsWith('https://'))) {
                             usiServerUrlElement.dataset.originalUrl = usiServerUrlElement.value;
-                            usiServerUrlElement.title = '';
                             console.log('[Game] 先手USIエンジン選択: 現在のURLを保持', { url: usiServerUrlElement.value });
                         }
                         // それ以外の場合はデフォルト値を使用
@@ -455,9 +440,12 @@ export class ShogiGame {
                             const defaultUrl = 'http://localhost:8080';
                             usiServerUrlElement.value = defaultUrl;
                             usiServerUrlElement.dataset.originalUrl = defaultUrl;
-                            usiServerUrlElement.title = '';
                             console.log('[Game] 先手USIエンジン選択: デフォルトURLを使用', { url: defaultUrl });
                         }
+                    }
+                    // エンジン名欄をクリア
+                    if (engineNameElement) {
+                        engineNameElement.value = '';
                     }
                 }
                 this.aiSente = this.createAI(PLAYER.SENTE);
@@ -473,20 +461,19 @@ export class ShogiGame {
             },
             'aiLevelGote': (e) => {
                 this.aiLevelGote = e.target.value;
-                // USIエンジンが選択された場合、URL表示欄をURL表示に戻す
+                // USIエンジンが選択された場合、URL表示欄をURL表示に戻し、エンジン名欄をクリア
                 if (this.aiLevelGote === AI_LEVEL.USI) {
                     const usiServerUrlElement = document.getElementById('usiServerUrlGote');
+                    const engineNameElement = document.getElementById('usiEngineNameGote');
                     if (usiServerUrlElement) {
                         // 元のURLが保存されている場合はそれを使用
                         if (usiServerUrlElement.dataset.originalUrl) {
                             usiServerUrlElement.value = usiServerUrlElement.dataset.originalUrl;
-                            usiServerUrlElement.title = '';
                             console.log('[Game] 後手USIエンジン選択: URL表示に戻しました', { url: usiServerUrlElement.dataset.originalUrl });
                         }
                         // 現在の値がURL形式の場合はそれを使用
                         else if (usiServerUrlElement.value && (usiServerUrlElement.value.startsWith('http://') || usiServerUrlElement.value.startsWith('https://'))) {
                             usiServerUrlElement.dataset.originalUrl = usiServerUrlElement.value;
-                            usiServerUrlElement.title = '';
                             console.log('[Game] 後手USIエンジン選択: 現在のURLを保持', { url: usiServerUrlElement.value });
                         }
                         // それ以外の場合はデフォルト値を使用
@@ -494,9 +481,12 @@ export class ShogiGame {
                             const defaultUrl = 'http://localhost:8080';
                             usiServerUrlElement.value = defaultUrl;
                             usiServerUrlElement.dataset.originalUrl = defaultUrl;
-                            usiServerUrlElement.title = '';
                             console.log('[Game] 後手USIエンジン選択: デフォルトURLを使用', { url: defaultUrl });
                         }
+                    }
+                    // エンジン名欄をクリア
+                    if (engineNameElement) {
+                        engineNameElement.value = '';
                     }
                 }
                 this.aiGote = this.createAI(PLAYER.GOTE);
