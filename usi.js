@@ -17,7 +17,7 @@ export class USIClient {
         this.engineName = null; // エンジン名
         this.engineAuthor = null; // エンジン作者
         this.onEngineNameReceived = null; // エンジン名取得時のコールバック
-        
+
         // 重複リクエスト防止用
         this.pendingConnectRequest = null; // 進行中のconnectリクエスト
         this.pendingInitializeRequest = null; // 進行中のinitializeリクエスト
@@ -34,10 +34,10 @@ export class USIClient {
      */
     debugLog(level, message, data = null) {
         if (!this.debugMode) return;
-        
+
         const timestamp = new Date().toISOString();
         const logPrefix = `[USI ${timestamp}]`;
-        
+
         switch (level) {
             case 'info':
                 console.info(`%c${logPrefix} ${message}`, 'color: #2196F3; font-weight: bold', data || '');
@@ -65,7 +65,7 @@ export class USIClient {
             this.debugLog('info', '既に接続済みです');
             return { connected: true };
         }
-        
+
         // 既に進行中の接続リクエストがある場合は待機
         if (this.pendingConnectRequest) {
             this.debugLog('info', '既存の接続リクエストを待機します...');
@@ -76,14 +76,14 @@ export class USIClient {
                 this.debugLog('warn', '既存の接続リクエストがエラーでした', { error: error.message });
             }
         }
-        
+
         const startTime = performance.now();
         this.debugLog('info', 'サーバー接続開始', { serverUrl: this.serverUrl });
-        
+
         // AbortControllerを作成
         const connectAbortController = new AbortController();
         this.requestAbortController = connectAbortController;
-        
+
         // 接続リクエストを保存
         const connectPromise = (async () => {
             try {
@@ -92,9 +92,9 @@ export class USIClient {
                     headers: { 'Content-Type': 'application/json' },
                     signal: connectAbortController.signal
                 });
-                
+
                 const elapsed = (performance.now() - startTime).toFixed(2);
-                
+
                 if (!response.ok) {
                     const errorText = await response.text().catch(() => '');
                     this.debugLog('error', `接続エラー: ${response.status}`, {
@@ -105,35 +105,35 @@ export class USIClient {
                     });
                     throw new Error(`接続エラー: ${response.status} ${response.statusText}`);
                 }
-                
+
                 const data = await response.json();
                 this.connected = true;
-                
+
                 this.debugLog('success', 'サーバー接続成功', {
                     ...data,
                     elapsed: `${elapsed}ms`
                 });
-                
+
                 return data;
             } catch (error) {
                 const elapsed = (performance.now() - startTime).toFixed(2);
-                
+
                 // リクエスト状態をクリア
                 if (this.pendingConnectRequest === connectPromise) {
                     this.pendingConnectRequest = null;
                 }
                 this.requestAbortController = null;
-                
+
                 if (error.name === 'AbortError') {
                     this.debugLog('warn', '接続リクエストがキャンセルされました');
                     throw new Error('接続リクエストがキャンセルされました');
                 }
-                
+
                 // 接続エラーはエンジン停止の可能性があるため、フラグを設定
                 this.engineDown = true;
                 this.connected = false;
                 this.engineReady = false;
-                
+
                 this.debugLog('error', 'USI接続エラー', {
                     error: error.message,
                     stack: error.stack,
@@ -147,9 +147,9 @@ export class USIClient {
                 }
             }
         })();
-        
+
         this.pendingConnectRequest = connectPromise;
-        
+
         return await connectPromise;
     }
 
@@ -167,16 +167,16 @@ export class USIClient {
                 this.debugLog('warn', '既存のusinewgameリクエストがエラーでした', { error: error.message });
             }
         }
-        
+
         const startTime = performance.now();
         this.debugLog('info', 'usinewgameリクエスト送信', {
             url: `${this.serverUrl}/usi/usinewgame`
         });
-        
+
         // AbortControllerを作成
         const newGameAbortController = new AbortController();
         this.requestAbortController = newGameAbortController;
-        
+
         // リクエストを保存
         const newGamePromise = (async () => {
             try {
@@ -185,9 +185,9 @@ export class USIClient {
                     headers: { 'Content-Type': 'application/json' },
                     signal: newGameAbortController.signal
                 });
-                
+
                 const elapsed = (performance.now() - startTime).toFixed(2);
-                
+
                 if (!response.ok) {
                     const errorText = await response.text().catch(() => '');
                     this.debugLog('error', `usinewgameエラー: ${response.status}`, {
@@ -198,30 +198,30 @@ export class USIClient {
                     });
                     throw new Error(`usinewgameエラー: ${response.status} ${response.statusText}`);
                 }
-                
+
                 const data = await response.json();
                 this.newGameSent = true;
-                
+
                 this.debugLog('success', 'usinewgame成功', {
                     ...data,
                     elapsed: `${elapsed}ms`
                 });
-                
+
                 return data;
             } catch (error) {
                 const elapsed = (performance.now() - startTime).toFixed(2);
-                
+
                 // リクエスト状態をクリア
                 if (this.pendingNewGameRequest === newGamePromise) {
                     this.pendingNewGameRequest = null;
                 }
                 this.requestAbortController = null;
-                
+
                 if (error.name === 'AbortError') {
                     this.debugLog('warn', 'usinewgameリクエストがキャンセルされました');
                     throw new Error('usinewgameリクエストがキャンセルされました');
                 }
-                
+
                 this.debugLog('error', 'usinewgameリクエストエラー', {
                     error: error.message,
                     elapsed: `${elapsed}ms`
@@ -234,9 +234,9 @@ export class USIClient {
                 }
             }
         })();
-        
+
         this.pendingNewGameRequest = newGamePromise;
-        
+
         return await newGamePromise;
     }
 
@@ -258,11 +258,11 @@ export class USIClient {
             }
             return { restarted: true };
         }
-        
+
         this.restartingEngine = true;
         const startTime = performance.now();
         this.debugLog('info', 'エンジン再起動開始', { serverUrl: this.serverUrl });
-        
+
         try {
             // 状態をリセット
             this.engineDown = false;
@@ -270,23 +270,23 @@ export class USIClient {
             this.engineReady = false;
             this.lastPositionSfen = null;
             this.newGameSent = false; // 再起動時はnewGameSentをリセット（次回ゲーム開始時に送信される）
-            
+
             // 進行中のリクエストをキャンセル
             this.cancelPendingRequests();
-            
+
             // エンジンを接続（再起動）
             await this.connect();
-            
+
             // エンジンを初期化
             await this.initialize();
-            
+
             const elapsed = (performance.now() - startTime).toFixed(2);
             this.debugLog('success', 'エンジン再起動成功', {
                 elapsed: `${elapsed}ms`,
                 connected: this.connected,
                 engineReady: this.engineReady
             });
-            
+
             return { restarted: true, elapsed: `${elapsed}ms` };
         } catch (error) {
             const elapsed = (performance.now() - startTime).toFixed(2);
@@ -310,7 +310,7 @@ export class USIClient {
             this.debugLog('info', '既にエンジンが初期化済みです');
             return { ready: true };
         }
-        
+
         // 既に進行中の初期化リクエストがある場合は待機
         if (this.pendingInitializeRequest) {
             this.debugLog('info', '既存の初期化リクエストを待機します...');
@@ -321,10 +321,10 @@ export class USIClient {
                 this.debugLog('warn', '既存の初期化リクエストがエラーでした', { error: error.message });
             }
         }
-        
+
         const startTime = performance.now();
         console.group(`%c[USI] エンジン初期化`, 'color: #2196F3; font-weight: bold');
-        
+
         if (!this.connected) {
             this.debugLog('info', '接続されていないため、先に接続します');
             await this.connect();
@@ -333,12 +333,12 @@ export class USIClient {
         // AbortControllerを作成
         const initializeAbortController = new AbortController();
         this.requestAbortController = initializeAbortController;
-        
+
         // 初期化リクエストを保存
         const initializePromise = (async () => {
             try {
                 this.debugLog('info', 'USI初期化コマンド送信', { serverUrl: this.serverUrl });
-                
+
                 const response = await fetch(`${this.serverUrl}/usi/usi`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -352,7 +352,7 @@ export class USIClient {
                     // 初期化エラーはエンジン停止の可能性があるため、フラグを設定
                     this.engineDown = true;
                     this.engineReady = false;
-                    
+
                     this.debugLog('error', `初期化エラー: ${response.status}`, {
                         status: response.status,
                         statusText: response.statusText,
@@ -363,7 +363,7 @@ export class USIClient {
                 }
 
                 const data = await response.json();
-                
+
                 // エンジン名と作者を保存（readyでなくても取得できる場合がある）
                 if (data.name) {
                     this.engineName = data.name;
@@ -371,7 +371,7 @@ export class USIClient {
                 if (data.author) {
                     this.engineAuthor = data.author;
                 }
-                
+
                 // エンジン名取得時のコールバックを呼び出し（readyでなくてもエンジン名が取得されていれば表示）
                 if (this.onEngineNameReceived && this.engineName) {
                     try {
@@ -380,21 +380,21 @@ export class USIClient {
                         this.debugLog('warn', 'エンジン名コールバックでエラー', { error: error.message });
                     }
                 }
-                
+
                 // usiok/readyokを受信したかどうかを確認
                 if (!data.ready) {
                     // エンジン名が取得できている場合は、エラーを投げずに警告のみ
                     if (this.engineName) {
                         this.engineDown = true;
                         this.engineReady = false;
-                        
+
                         this.debugLog('warn', 'usiok/readyokが受信されませんでしたが、エンジン名は取得できました', {
                             engineName: this.engineName,
                             engineAuthor: this.engineAuthor,
                             data: data,
                             elapsed: `${elapsed}ms`
                         });
-                        
+
                         // エンジン名は取得できているが、readyでないため対局には使用できない
                         // エラーを投げずに、ready: falseの状態で返す
                         return {
@@ -406,7 +406,7 @@ export class USIClient {
                         // エンジン名も取得できていない場合はエラー
                         this.engineDown = true;
                         this.engineReady = false;
-                        
+
                         this.debugLog('error', 'usiok/readyokが受信されませんでした', {
                             data: data,
                             elapsed: `${elapsed}ms`
@@ -414,36 +414,36 @@ export class USIClient {
                         throw new Error('usiok/readyokが受信されませんでした');
                     }
                 }
-                
+
                 this.engineReady = data.ready;
                 this.engineDown = false; // 再初期化が成功したので停止状態を解除
-                
+
                 this.debugLog('success', 'usiok/readyok受信完了 - エンジン初期化完了', {
                     ready: this.engineReady,
                     engineName: data.name,
                     engineAuthor: data.author,
                     elapsed: `${elapsed}ms`
                 });
-                
+
                 return data;
             } catch (error) {
                 const elapsed = (performance.now() - startTime).toFixed(2);
-                
+
                 // リクエスト状態をクリア
                 if (this.pendingInitializeRequest === initializePromise) {
                     this.pendingInitializeRequest = null;
                 }
                 this.requestAbortController = null;
-                
+
                 if (error.name === 'AbortError') {
                     this.debugLog('warn', '初期化リクエストがキャンセルされました');
                     throw new Error('初期化リクエストがキャンセルされました');
                 }
-                
+
                 // 初期化エラーはエンジン停止の可能性があるため、フラグを設定
                 this.engineDown = true;
                 this.engineReady = false;
-                
+
                 this.debugLog('error', 'USI初期化エラー', {
                     error: error.message,
                     stack: error.stack,
@@ -458,9 +458,9 @@ export class USIClient {
                 console.groupEnd();
             }
         })();
-        
+
         this.pendingInitializeRequest = initializePromise;
-        
+
         return await initializePromise;
     }
 
@@ -473,14 +473,14 @@ export class USIClient {
      */
     boardToSFEN(game, gameMode = null, turn = null) {
         let sfen = '';
-        
+
         // 盤面をSFEN形式に変換
         // SFEN: 9段目（上段）から1段目（下段）へ、各段は9筋（右端）から1筋（左端）へ
         // 内部: 行0（上段）から行8（下段）へ、列0（左端）から列8（右端）へ
         for (let row = 0; row < BOARD_SIZE; row++) {
             let emptyCount = 0;
-            // 右から左へ（列8から列0へ）
-            for (let col = 8; col >= 0; col--) {
+            // 左から右へ（列0から列8へ -> 筋9から筋1へ）
+            for (let col = 0; col < BOARD_SIZE; col++) {
                 const piece = game.board[row][col];
                 if (!piece) {
                     emptyCount++;
@@ -550,7 +550,7 @@ export class USIClient {
      */
     formatHand(pieces) {
         if (!pieces || pieces.length === 0) return '';
-        
+
         const counts = {};
         pieces.forEach(piece => {
             counts[piece] = (counts[piece] || 0) + 1;
@@ -592,7 +592,7 @@ export class USIClient {
             });
             return null;
         }
-        
+
         // エンジンが停止している場合、自動再起動を試みる
         if (this.engineDown) {
             if (this.autoRestartEnabled && !this.restartingEngine) {
@@ -602,10 +602,10 @@ export class USIClient {
                     this.debugLog('success', 'エンジン再起動成功。思考を続行します', { turn, gameMode });
                 } catch (restartError) {
                     const errMsg = 'USIエンジンが停止しており、再起動にも失敗しました。';
-                    this.debugLog('error', errMsg, { 
-                        turn, 
+                    this.debugLog('error', errMsg, {
+                        turn,
                         gameMode,
-                        restartError: restartError.message 
+                        restartError: restartError.message
                     });
                     throw new Error(errMsg);
                 }
@@ -618,7 +618,7 @@ export class USIClient {
         const totalStartTime = performance.now();
         const playerName = turn === 'sente' ? '先手' : '後手';
         console.group(`%c[USI] 最善手取得 (${playerName})`, 'color: #9C27B0; font-weight: bold');
-        
+
         // 既に進行中のリクエストがある場合はキャンセル
         if (this.pendingPositionRequest || this.pendingGoRequest) {
             this.debugLog('warn', '既存のリクエストをキャンセルします', {
@@ -627,7 +627,7 @@ export class USIClient {
             });
             this.cancelPendingRequests();
         }
-        
+
         if (!this.engineReady) {
             this.debugLog('info', 'エンジンが準備できていないため、初期化します', {
                 player: playerName,
@@ -639,13 +639,22 @@ export class USIClient {
         try {
             // 局面設定
             const positionStartTime = performance.now();
-            
+
             // 現在の局面のSFENを計算（手番を正しく反映）
-            // turnパラメータを使用して、現在の手番を正しく設定
+            // startposではなく、常に現在の盤面(SFEN)を送信することで、
+            // 棋譜の不整合によるエラー（"移動元に駒が存在しません"など）を防止する
             const currentSfen = this.boardToSFEN(game, gameMode, turn);
-            
-            // 手の履歴をUSI形式に変換（全ての手：対戦相手の移動も含む）
+
+            // 手の履歴はSFENに含まれる盤面状態以降の手（つまり0手）とする
+            // SFENで現在の盤面を完全表現するため、履歴は不要
             const usiMoves = [];
+            /*
+            if (game.moveHistory && game.moveHistory.length > 0) {
+                 // ... (既存の履歴変換コードはコメントアウト)
+            }
+            */
+
+            /*
             if (game.moveHistory && game.moveHistory.length > 0) {
                 for (let i = 0; i < game.moveHistory.length; i++) {
                     const move = game.moveHistory[i];
@@ -686,7 +695,8 @@ export class USIClient {
                     }
                 }
             }
-            
+            */
+
             this.debugLog('info', '局面設定リクエスト送信', {
                 sfen: currentSfen,
                 turn: turn,
@@ -694,20 +704,11 @@ export class USIClient {
                 gameCurrentTurn: game.currentTurn,
                 moveCount: game.moveHistory ? game.moveHistory.length : 0,
                 movesCount: usiMoves.length,
-                moves: usiMoves,
-                moveHistory: game.moveHistory ? game.moveHistory.map((m, i) => ({
-                    index: i,
-                    type: m.type,
-                    fromRow: m.fromRow,
-                    fromCol: m.fromCol,
-                    toRow: m.toRow,
-                    toCol: m.toCol,
-                    piece: m.piece,
-                    turn: m.turn
-                })) : [],
+                moves: usiMoves, // USI形式の手のリスト
+                // movesInternal: game.moveHistory, // 必要なら内部形式もログ出力
                 url: `${this.serverUrl}/usi/position`
             });
-            
+
             // 重複リクエストのチェック（同じSFENの場合はスキップ）
             const positionKey = `${currentSfen}:${usiMoves.length}`;
             if (this.lastPositionSfen === positionKey && this.pendingPositionRequest) {
@@ -720,14 +721,14 @@ export class USIClient {
                     this.debugLog('warn', '既存のpositionリクエストがエラーでした', { error: error.message });
                 }
             }
-            
+
             // usinewgameはゲーム開始時（reset()）にのみ送信される
             // ここでは送信しない
-            
+
             // AbortControllerを作成
             const positionAbortController = new AbortController();
             this.requestAbortController = positionAbortController;
-            
+
             // positionリクエストを保存
             const positionPromise = fetch(`${this.serverUrl}/usi/position`, {
                 method: 'POST',
@@ -738,10 +739,10 @@ export class USIClient {
                 }),
                 signal: positionAbortController.signal
             });
-            
+
             this.pendingPositionRequest = positionPromise;
             this.lastPositionSfen = positionKey;
-            
+
             const response = await positionPromise;
 
             const positionElapsed = (performance.now() - positionStartTime).toFixed(2);
@@ -758,7 +759,7 @@ export class USIClient {
                 this.engineDown = true;
                 this.engineReady = false;
                 console.groupEnd();
-                
+
                 // 自動再起動を試みる
                 if (this.autoRestartEnabled && !this.restartingEngine) {
                     this.debugLog('info', 'positionエラー検知。エンジン再起動を試みます...');
@@ -782,7 +783,7 @@ export class USIClient {
                 player: playerName,
                 elapsed: `${positionElapsed}ms`
             });
-            
+
             // positionリクエスト完了
             if (this.pendingPositionRequest === positionPromise) {
                 this.pendingPositionRequest = null;
@@ -796,11 +797,11 @@ export class USIClient {
                 timeLimit: timeLimit,
                 url: `${this.serverUrl}/usi/go`
             });
-            
+
             // goリクエスト用のAbortController
             const goAbortController = new AbortController();
             this.requestAbortController = goAbortController;
-            
+
             // goリクエストを保存
             const goPromise = fetch(`${this.serverUrl}/usi/go`, {
                 method: 'POST',
@@ -810,9 +811,9 @@ export class USIClient {
                 }),
                 signal: goAbortController.signal
             });
-            
+
             this.pendingGoRequest = goPromise;
-            
+
             let goResponse;
             try {
                 goResponse = await goPromise;
@@ -822,7 +823,7 @@ export class USIClient {
                     this.pendingGoRequest = null;
                 }
                 this.requestAbortController = null;
-                
+
                 this.debugLog('error', 'goリクエスト送信エラー（エンジン停止の可能性）', {
                     error: fetchError.message,
                     name: fetchError.name,
@@ -830,17 +831,17 @@ export class USIClient {
                     elapsed: `${goElapsed}ms`,
                     isAbort: fetchError.name === 'AbortError'
                 });
-                
+
                 // エンジン停止とみなしフラグを立てる
                 this.engineDown = true;
                 this.engineReady = false;
-                
+
                 console.groupEnd();
-                
+
                 if (fetchError.name === 'AbortError') {
                     throw new Error('goリクエストがキャンセルされました');
                 }
-                
+
                 // 自動再起動を試みる
                 if (this.autoRestartEnabled && !this.restartingEngine) {
                     this.debugLog('info', 'goリクエスト送信エラー検知。エンジン再起動を試みます...');
@@ -863,10 +864,10 @@ export class USIClient {
                     this.pendingGoRequest = null;
                 }
                 this.requestAbortController = null;
-                
+
                 let errorText = '';
                 let errorData = null;
-                
+
                 try {
                     errorText = await goResponse.text();
                     try {
@@ -879,28 +880,28 @@ export class USIClient {
                         error: textError.message
                     });
                 }
-                
+
                 const errorDetails = {
                     status: goResponse.status,
                     statusText: goResponse.statusText,
                     elapsed: `${goElapsed}ms`,
                     url: `${this.serverUrl}/usi/go`
                 };
-                
+
                 if (errorData) {
                     errorDetails.errorData = errorData;
                 } else if (errorText) {
                     errorDetails.errorText = errorText;
                 }
-                
+
                 this.debugLog('error', `goエラー（エンジン停止の可能性）: ${goResponse.status} ${goResponse.statusText}`, errorDetails);
-                
+
                 // エンジン停止とみなしフラグを立てる
                 this.engineDown = true;
                 this.engineReady = false;
-                
+
                 console.groupEnd();
-                
+
                 // 自動再起動を試みる
                 if (this.autoRestartEnabled && !this.restartingEngine) {
                     this.debugLog('info', 'goエラー検知。エンジン再起動を試みます...');
@@ -918,7 +919,7 @@ export class USIClient {
             // レスポンスのJSONパース
             let data;
             let usiMove;
-            
+
             try {
                 data = await goResponse.json();
                 usiMove = data.bestmove;
@@ -927,20 +928,20 @@ export class USIClient {
                     this.pendingGoRequest = null;
                 }
                 this.requestAbortController = null;
-                
+
                 this.debugLog('error', 'goレスポンスのJSONパースエラー（エンジン停止の可能性）', {
                     error: parseError.message,
                     status: goResponse.status,
                     statusText: goResponse.statusText,
                     elapsed: `${goElapsed}ms`
                 });
-                
+
                 // エンジン停止とみなしフラグを立てる
                 this.engineDown = true;
                 this.engineReady = false;
-                
+
                 console.groupEnd();
-                
+
                 // 自動再起動を試みる
                 if (this.autoRestartEnabled && !this.restartingEngine) {
                     this.debugLog('info', 'goレスポンスパースエラー検知。エンジン再起動を試みます...');
@@ -954,13 +955,13 @@ export class USIClient {
                     throw new Error(`goレスポンスのパースエラー: ${parseError.message}`);
                 }
             }
-            
+
             // goリクエスト完了
             if (this.pendingGoRequest === goPromise) {
                 this.pendingGoRequest = null;
             }
             this.requestAbortController = null;
-            
+
             this.debugLog('success', '思考完了', {
                 bestmove: usiMove,
                 position: data.position,
@@ -981,7 +982,7 @@ export class USIClient {
             const parseStartTime = performance.now();
             const parsedMove = this.parseUSIMove(usiMove, game, turn);
             const parseElapsed = (performance.now() - parseStartTime).toFixed(2);
-            
+
             if (!parsedMove) {
                 const errorMsg = `USI形式の手を内部形式に変換できませんでした: ${usiMove}`;
                 this.debugLog('error', '手の変換失敗', {
@@ -992,7 +993,7 @@ export class USIClient {
                 console.groupEnd();
                 throw new Error(errorMsg);
             }
-            
+
             this.debugLog('success', '手の変換完了', {
                 usiMove: usiMove,
                 parsedMove: parsedMove,
@@ -1000,7 +1001,7 @@ export class USIClient {
                 player: playerName,
                 elapsed: `${parseElapsed}ms`
             });
-            
+
             const totalElapsed = (performance.now() - totalStartTime).toFixed(2);
             this.debugLog('info', '最善手取得完了', {
                 turn: turn,
@@ -1012,12 +1013,12 @@ export class USIClient {
                     parse: `${parseElapsed}ms`
                 }
             });
-            
+
             console.groupEnd();
             return parsedMove;
         } catch (error) {
             const playerName = turn === 'sente' ? '先手' : '後手';
-            
+
             // リクエストがキャンセルされた場合は特別に処理
             if (error.name === 'AbortError' || error.message.includes('キャンセル')) {
                 this.debugLog('warn', 'リクエストがキャンセルされました', {
@@ -1036,7 +1037,7 @@ export class USIClient {
                 console.groupEnd();
                 throw new Error('リクエストがキャンセルされました');
             }
-            
+
             // リクエスト状態をクリア
             if (this.pendingPositionRequest) {
                 this.pendingPositionRequest = null;
@@ -1045,9 +1046,9 @@ export class USIClient {
                 this.pendingGoRequest = null;
             }
             this.requestAbortController = null;
-            
+
             const totalElapsed = (performance.now() - totalStartTime).toFixed(2);
-            
+
             // エラーの種類を識別
             const errorInfo = {
                 error: error.message,
@@ -1057,24 +1058,24 @@ export class USIClient {
                 player: playerName,
                 totalElapsed: `${totalElapsed}ms`
             };
-            
+
             // goリクエスト関連のエラーかどうかを判定
             if (error.message.includes('go') || error.message.includes('思考')) {
                 errorInfo.isGoError = true;
                 errorInfo.suggestion = 'エンジンが応答していない可能性があります。エンジンの状態を確認してください。';
             }
-            
+
             // ネットワークエラーの場合
             if (error.message.includes('fetch') || error.message.includes('network') || error.message.includes('Failed to fetch')) {
                 errorInfo.isNetworkError = true;
                 errorInfo.suggestion = 'サーバーに接続できません。サーバーが起動しているか確認してください。';
             }
-            
+
             // スタックトレースがある場合は追加
             if (error.stack) {
                 errorInfo.stack = error.stack;
             }
-            
+
             this.debugLog('error', 'USI最善手取得エラー', errorInfo);
             console.groupEnd();
             throw error;
@@ -1087,20 +1088,20 @@ export class USIClient {
     async retryGoRequest(game, turn, timeLimit, originalStartTime) {
         const retryStartTime = performance.now();
         const retryDelay = 500; // 再試行前の待機時間（ミリ秒）
-        
+
         this.debugLog('info', '思考開始コマンド再試行', {
             delay: `${retryDelay}ms`,
             timeLimit: timeLimit
         });
-        
+
         // 少し待機してから再試行
         await new Promise(resolve => setTimeout(resolve, retryDelay));
-        
+
         try {
             // goリクエスト用のAbortController
             const goAbortController = new AbortController();
             this.requestAbortController = goAbortController;
-            
+
             // goリクエストを保存
             const goPromise = fetch(`${this.serverUrl}/usi/go`, {
                 method: 'POST',
@@ -1110,31 +1111,31 @@ export class USIClient {
                 }),
                 signal: goAbortController.signal
             });
-            
+
             this.pendingGoRequest = goPromise;
-            
+
             let goResponse;
             try {
                 goResponse = await goPromise;
             } catch (fetchError) {
                 // ネットワークエラーやタイムアウトなどのfetchエラー
                 const retryElapsed = (performance.now() - retryStartTime).toFixed(2);
-                
+
                 // リクエスト状態をクリア
                 if (this.pendingGoRequest === goPromise) {
                     this.pendingGoRequest = null;
                 }
                 this.requestAbortController = null;
-                
+
                 this.debugLog('error', 'goリクエスト再試行送信エラー', {
                     error: fetchError.message,
                     name: fetchError.name,
                     elapsed: `${retryElapsed}ms`,
                     isAbort: fetchError.name === 'AbortError'
                 });
-                
+
                 console.groupEnd();
-                
+
                 if (fetchError.name === 'AbortError') {
                     throw new Error('goリクエストがキャンセルされました');
                 } else {
@@ -1151,13 +1152,13 @@ export class USIClient {
                     this.pendingGoRequest = null;
                 }
                 this.requestAbortController = null;
-                
+
                 this.debugLog('error', `goリクエスト再試行も失敗: ${goResponse.status}`, {
                     status: goResponse.status,
                     statusText: goResponse.statusText,
                     elapsed: `${retryElapsed}ms`
                 });
-                
+
                 console.groupEnd();
                 throw new Error(`goリクエスト再試行エラー: ${goResponse.status} ${goResponse.statusText}`);
             }
@@ -1165,7 +1166,7 @@ export class USIClient {
             // レスポンスのJSONパース
             let data;
             let usiMove;
-            
+
             try {
                 data = await goResponse.json();
                 usiMove = data.bestmove;
@@ -1175,22 +1176,22 @@ export class USIClient {
                     this.pendingGoRequest = null;
                 }
                 this.requestAbortController = null;
-                
+
                 this.debugLog('error', 'goレスポンス再試行のJSONパースエラー', {
                     error: parseError.message,
                     elapsed: `${retryElapsed}ms`
                 });
-                
+
                 console.groupEnd();
                 throw new Error(`goレスポンス再試行のパースエラー: ${parseError.message}`);
             }
-            
+
             // goリクエスト完了
             if (this.pendingGoRequest === goPromise) {
                 this.pendingGoRequest = null;
             }
             this.requestAbortController = null;
-            
+
             const totalElapsed = (performance.now() - originalStartTime).toFixed(2);
             this.debugLog('success', '思考完了（再試行成功）', {
                 bestmove: usiMove,
@@ -1215,7 +1216,7 @@ export class USIClient {
             const parseStartTime = performance.now();
             const parsedMove = this.parseUSIMove(usiMove, game, turn);
             const parseElapsed = (performance.now() - parseStartTime).toFixed(2);
-            
+
             if (parsedMove) {
                 this.debugLog('success', '手の変換完了（再試行）', {
                     usiMove: usiMove,
@@ -1231,7 +1232,7 @@ export class USIClient {
                     player: playerName
                 });
             }
-            
+
             console.groupEnd();
             return parsedMove;
         } catch (error) {
@@ -1240,7 +1241,7 @@ export class USIClient {
                 this.pendingGoRequest = null;
             }
             this.requestAbortController = null;
-            
+
             const retryElapsed = (performance.now() - retryStartTime).toFixed(2);
             this.debugLog('error', 'goリクエスト再試行エラー', {
                 error: error.message,
@@ -1248,7 +1249,7 @@ export class USIClient {
                 player: playerName,
                 elapsed: `${retryElapsed}ms`
             });
-            
+
             console.groupEnd();
             throw error;
         }
@@ -1281,7 +1282,7 @@ export class USIClient {
         // USI形式: "7g7f" (移動) または "P*5e" (打ち)
         // USI座標系: 筋1-9(右→左), 段a-i(下→上)
         // 内部座標系: 列0-8(左→右), 行0-8(上→下)
-        
+
         if (usiMove.includes('*')) {
             // 打ち: "P*5e"
             const match = usiMove.match(/^([A-Z])\*(\d)([a-i])$/);
@@ -1290,7 +1291,7 @@ export class USIClient {
             const piece = match[1].toLowerCase();
             const usiCol = parseInt(match[2]); // 1-9
             const usiRow = match[3].charCodeAt(0) - 'a'.charCodeAt(0); // 0-8 (a=0, i=8)
-            
+
             const col = 9 - usiCol; // 内部列: 9-1 = 8-0
             const row = usiRow; // 内部行: USI段a(0)→内部行0, USI段i(8)→内部行8
 
@@ -1357,7 +1358,7 @@ export class USIClient {
                     });
                     return null;
                 }
-                
+
                 if (turn === 'gote' && !game.isGote(piece)) {
                     this.debugLog('error', '後手のターンですが、先手の駒を動かそうとしています', {
                         usiMove: usiMove,
@@ -1388,8 +1389,10 @@ export class USIClient {
      */
     moveToUSI(move, turn = 'sente') {
         if (move.type === 'drop') {
-            // 打ち手の場合、先手は大文字、後手は小文字
-            const piece = turn === 'sente' ? move.piece.toUpperCase() : move.piece.toLowerCase();
+            // 打ち手の場合、一部のエンジン（YaneuraOuなど）は手番に関わらず大文字を期待する場合がある
+            // または、手番から判別できるため大文字でも通る可能性がある
+            // 安全のため大文字に統一してみる
+            const piece = move.piece.toUpperCase();
             const usiCol = 9 - move.toCol; // 内部列→USI筋
             // 内部行→USI段の変換: parseUSIMoveで row = 8 - usiRow なので、逆変換は usiRow = 8 - row
             // しかし、実際のテストでは内部行6→USI段gが正しい
@@ -1417,18 +1420,18 @@ export class USIClient {
     async disconnect() {
         const startTime = performance.now();
         this.debugLog('info', '接続切断開始', { serverUrl: this.serverUrl });
-        
+
         // 進行中のリクエストをキャンセル
         this.cancelPendingRequests();
-        
+
         try {
             const response = await fetch(`${this.serverUrl}/usi/quit`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
-            
+
             const elapsed = (performance.now() - startTime).toFixed(2);
-            
+
             if (!response.ok) {
                 this.debugLog('warn', `切断エラー: ${response.status}`, {
                     status: response.status,
@@ -1439,7 +1442,7 @@ export class USIClient {
                     elapsed: `${elapsed}ms`
                 });
             }
-            
+
             this.connected = false;
             this.engineReady = false;
             this.lastPositionSfen = null;

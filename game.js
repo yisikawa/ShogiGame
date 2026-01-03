@@ -47,7 +47,7 @@ export class ShogiGame {
         this.aiMovePromise = null; // 現在進行中のAI思考のPromise（重複防止用）
         this.aiMoveTimeout = null; // AI思考のタイムアウトID（クリーンアップ用）
         this.gameStarted = false; // ゲームが開始されたかどうか（ニューゲームボタンを押すまでfalse）
-        
+
         // 駒の移動ロジックを初期化
         this.pieceMoves = new PieceMoves(
             this.board,
@@ -55,7 +55,7 @@ export class ShogiGame {
             (piece) => this.isSente(piece),
             (piece) => this.isGote(piece)
         );
-        
+
         this.init();
     }
 
@@ -87,12 +87,12 @@ export class ShogiGame {
         // 先手または後手のAIを作成
         const isSente = player === PLAYER.SENTE;
         const aiLevel = isSente ? this.aiLevelSente : this.aiLevelGote;
-        
+
         // 「人間」の場合はnullを返す
         if (aiLevel === AI_LEVEL.HUMAN) {
             return null;
         }
-        
+
         // Ollamaモデルを取得
         let ollamaModel = OLLAMA_CONFIG.MODEL;
         if (isSente) {
@@ -106,7 +106,7 @@ export class ShogiGame {
                 ollamaModel = ollamaModelInput.value.trim();
             }
         }
-        
+
         // USIサーバーURLを取得（デフォルト: http://localhost:8080）
         let usiServerUrl = 'http://localhost:8080'; // デフォルト値
         let usiServerUrlElement = null;
@@ -118,7 +118,7 @@ export class ShogiGame {
                 if (usiServerUrlElement.dataset.originalUrl) {
                     usiServerUrl = usiServerUrlElement.dataset.originalUrl;
                     console.log(`[Game] 先手USI URL取得: dataset.originalUrl = ${usiServerUrl}`);
-                } 
+                }
                 // 現在の値がURL形式の場合はそれを使用
                 else if (currentValue && (currentValue.startsWith('http://') || currentValue.startsWith('https://'))) {
                     usiServerUrl = currentValue;
@@ -139,7 +139,7 @@ export class ShogiGame {
                 if (usiServerUrlElement.dataset.originalUrl) {
                     usiServerUrl = usiServerUrlElement.dataset.originalUrl;
                     console.log(`[Game] 後手USI URL取得: dataset.originalUrl = ${usiServerUrl}`);
-                } 
+                }
                 // 現在の値がURL形式の場合はそれを使用
                 else if (currentValue && (currentValue.startsWith('http://') || currentValue.startsWith('https://'))) {
                     usiServerUrl = currentValue;
@@ -153,44 +153,44 @@ export class ShogiGame {
                 }
             }
         }
-        
+
         console.log(`[Game] createAI: ${isSente ? '先手' : '後手'}, USI URL = ${usiServerUrl}`);
         const ai = new ShogiAI(aiLevel, null, ollamaModel, usiServerUrl);
-        
+
         // USIエンジンの場合、エンジン名取得時のコールバックを設定
         if (aiLevel === AI_LEVEL.USI && usiServerUrlElement) {
             // 元のURLを保存（デフォルト値も含む）
             if (!usiServerUrlElement.dataset.originalUrl) {
                 usiServerUrlElement.dataset.originalUrl = usiServerUrl || 'http://localhost:8080';
             }
-            
+
             // エンジン名表示欄の要素を取得
             const engineNameElementId = isSente ? 'usiEngineNameSente' : 'usiEngineNameGote';
             const engineNameElement = document.getElementById(engineNameElementId);
-            
+
             ai.setEngineNameCallback((engineName, engineAuthor) => {
                 // エンジン名を表示用テキストに整形
                 const displayText = engineAuthor ? `${engineName} (${engineAuthor})` : engineName;
-                
+
                 // 元のURLを確実に保持
                 if (!usiServerUrlElement.dataset.originalUrl) {
                     usiServerUrlElement.dataset.originalUrl = usiServerUrl || 'http://localhost:8080';
                 }
-                
+
                 // URL入力欄はURLのまま保持（編集可能）
                 // エンジン名は別の要素に表示
                 if (engineNameElement) {
                     engineNameElement.value = displayText;
                 }
             });
-            
+
             // USIエンジンの初期化は「ニューゲーム」ボタンが押されるまで実行しない
             // （ニューゲームボタンのイベントハンドラで実行される）
         }
-        
+
         return ai;
     }
-    
+
     /**
      * USIエンジンを初期化し、新しいゲームを開始する
      * （ニューゲームボタンが押された時に呼ばれる）
@@ -200,14 +200,14 @@ export class ShogiGame {
             { ai: this.aiSente, name: '先手' },
             { ai: this.aiGote, name: '後手' }
         ];
-        
+
         engines.forEach(({ ai, name }) => {
             if (ai && ai.usiClient) {
                 this.initializeSingleUSIEngine(ai.usiClient, name);
             }
         });
     }
-    
+
     /**
      * 単一のUSIエンジンを初期化し、新しいゲームを開始する
      * @param {USIClient} usiClient - USIクライアントインスタンス
@@ -217,7 +217,7 @@ export class ShogiGame {
         try {
             // エンジン初期化（接続とエンジン名取得）
             await usiClient.initialize();
-            
+
             // 初期化成功後、ゲーム開始時にusinewgameを送信
             await usiClient.sendNewGame();
         } catch (error) {
@@ -225,7 +225,7 @@ export class ShogiGame {
             console.warn(`[Game] ${name}USIエンジン処理エラー:`, error.message);
         }
     }
-    
+
     /**
      * Ollamaモデルが利用可能か確認し、必要に応じて起動する
      * @param {string} modelName - 確認するモデル名
@@ -236,66 +236,66 @@ export class ShogiGame {
             console.warn(`[Game] ${playerName}Ollamaモデル名が空です`);
             return;
         }
-        
+
         const endpoint = OLLAMA_CONFIG.ENDPOINT;
         const timeout = 30000; // 30秒のタイムアウト
-        
+
         try {
             // まずモデル一覧を取得してモデルが存在するか確認
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), timeout);
-            
+
             const modelsResponse = await fetch(`${endpoint}/api/tags`, {
                 method: 'GET',
                 headers: { 'Content-Type': 'application/json' },
                 signal: controller.signal
             });
-            
+
             clearTimeout(timeoutId);
-            
+
             if (!modelsResponse.ok) {
                 throw new Error(`Ollamaサーバーに接続できません: ${modelsResponse.status}`);
             }
-            
+
             const modelsData = await modelsResponse.json();
             const availableModels = modelsData.models || [];
             const modelExists = availableModels.some(model => {
                 const name = model.name || model.model || '';
                 return name === modelName || name.startsWith(`${modelName}:`);
             });
-            
+
             if (!modelExists) {
                 console.warn(`[Game] ${playerName}Ollamaモデル "${modelName}" が見つかりません。モデルをプルします...`);
-                
+
                 // モデルが存在しない場合、プルを試みる
                 const pullController = new AbortController();
                 const pullTimeoutId = setTimeout(() => pullController.abort(), timeout * 10); // プルは長めに設定（5分）
-                
+
                 const pullResponse = await fetch(`${endpoint}/api/pull`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name: modelName }),
                     signal: pullController.signal
                 });
-                
+
                 if (!pullResponse.ok) {
                     clearTimeout(pullTimeoutId);
                     throw new Error(`モデル "${modelName}" のプルに失敗しました: ${pullResponse.status}`);
                 }
-                
+
                 // ストリーミングレスポンスを処理
                 const reader = pullResponse.body.getReader();
                 const decoder = new TextDecoder();
                 let pullComplete = false;
-                
+
                 try {
                     while (!pullComplete) {
                         const { done, value } = await reader.read();
                         if (done) break;
-                        
+
                         const chunk = decoder.decode(value, { stream: true });
                         const lines = chunk.split('\n').filter(line => line.trim());
-                        
+
                         for (const line of lines) {
                             try {
                                 const data = JSON.parse(line);
@@ -328,7 +328,7 @@ export class ShogiGame {
             // エラーが発生しても処理は続行（モデルが既に存在する可能性があるため）
         }
     }
-    
+
     /**
      * 現在の手番に応じたAIインスタンスを取得
      */
@@ -339,7 +339,7 @@ export class ShogiGame {
             return this.aiGote;
         }
     }
-    
+
     /**
      * 設定要素の表示/非表示を更新するヘルパー関数
      * @param {HTMLElement} element - 更新する要素
@@ -352,7 +352,7 @@ export class ShogiGame {
             element.style.setProperty('display', newDisplay, 'important');
         }
     }
-    
+
     /**
      * AI設定UIの表示/非表示を更新
      */
@@ -362,19 +362,19 @@ export class ShogiGame {
         if (aiSettingsContainer) {
             aiSettingsContainer.style.display = 'flex';
         }
-        
+
         // 先手と後手のAIレベル選択は常に表示
         const aiLevelSenteContainer = document.getElementById('aiLevelSenteContainer');
         const aiLevelGoteContainer = document.getElementById('aiLevelGoteContainer');
         if (aiLevelSenteContainer) aiLevelSenteContainer.style.display = 'flex';
         if (aiLevelGoteContainer) aiLevelGoteContainer.style.display = 'flex';
-        
+
         // DOMから直接値を読み取る（this.aiLevelSente/Goteが更新されていない場合に備える）
         const aiLevelSenteSelect = document.getElementById('aiLevelSente');
         const aiLevelGoteSelect = document.getElementById('aiLevelGote');
         const currentAiLevelSente = aiLevelSenteSelect ? aiLevelSenteSelect.value : this.aiLevelSente;
         const currentAiLevelGote = aiLevelGoteSelect ? aiLevelGoteSelect.value : this.aiLevelGote;
-        
+
         // 先手の設定表示/非表示
         const ollamaConfigSente = document.getElementById('ollamaConfigSente');
         const usiConfigSente = document.getElementById('usiConfigSente');
@@ -382,7 +382,7 @@ export class ShogiGame {
         const shouldShowUsiSente = currentAiLevelSente === AI_LEVEL.USI;
         this.updateElementVisibility(ollamaConfigSente, shouldShowOllamaSente);
         this.updateElementVisibility(usiConfigSente, shouldShowUsiSente);
-        
+
         // 後手の設定表示/非表示
         const ollamaConfigGote = document.getElementById('ollamaConfigGote');
         const usiConfigGote = document.getElementById('usiConfigGote');
@@ -391,7 +391,7 @@ export class ShogiGame {
         this.updateElementVisibility(ollamaConfigGote, shouldShowOllamaGote);
         this.updateElementVisibility(usiConfigGote, shouldShowUsiGote);
     }
-    
+
     /**
      * AI設定UIを遅延更新（確実に反映させるため）
      */
@@ -631,29 +631,7 @@ export class ShogiGame {
         return row >= 0 && row < BOARD_SIZE && col >= 0 && col < BOARD_SIZE;
     }
 
-    /**
-     * 指定位置の駒の移動可能な位置を取得
-     */
-    getPossibleMoves(row, col) {
-        const piece = this.board[row][col];
-        if (!piece) return [];
-        
-        const isCurrentPlayer = (this.currentTurn === PLAYER.SENTE && this.isSente(piece)) ||
-                               (this.currentTurn === PLAYER.GOTE && this.isGote(piece));
-        if (!isCurrentPlayer) return [];
 
-        // PieceMovesクラスを使用して移動可能な位置を取得
-        this.pieceMoves.board = this.board; // 最新の盤面を反映
-        const moves = this.pieceMoves.getMovesForPiece(row, col, piece);
-
-        // 自分の駒を取らないようにフィルタリング
-        return moves.filter(([r, c]) => {
-            const target = this.board[r][c];
-            if (!target) return true;
-            return (this.currentTurn === PLAYER.SENTE && this.isGote(target)) ||
-                   (this.currentTurn === PLAYER.GOTE && this.isSente(target));
-        });
-    }
 
     /**
      * 駒を移動
@@ -661,17 +639,17 @@ export class ShogiGame {
     movePiece(fromRow, fromCol, toRow, toCol, promote = null) {
         const piece = this.board[fromRow][fromCol];
         const captured = this.board[toRow][toCol];
-        
+
         // 持ち駒に追加
         if (captured) {
             const capturedPiece = captured.replace('+', '').toLowerCase();
             this.capturedPieces[this.currentTurn].push(capturedPiece);
         }
-        
+
         // 駒を移動
         this.board[toRow][toCol] = piece;
         this.board[fromRow][fromCol] = null;
-        
+
         // 成りの判定
         const canPromote = this.canPromote(piece, fromRow, toRow);
         if (canPromote && !piece.includes('+') && piece.toLowerCase() !== PIECE_TYPE.KING && piece.toLowerCase() !== PIECE_TYPE.GOLD) {
@@ -680,12 +658,12 @@ export class ShogiGame {
                 this.showPromoteModal(piece);
                 return;
             }
-            
+
             if (promote === true || (this.isAITurn() && this.shouldAIPromote(piece, toRow))) {
                 this.board[toRow][toCol] = '+' + piece;
             }
         }
-        
+
         // 王が取られたかチェック
         const capturedPiece = captured ? captured.replace('+', '').toLowerCase() : null;
         if (capturedPiece === PIECE_TYPE.KING) {
@@ -694,7 +672,7 @@ export class ShogiGame {
             this.showReplayMode();
             return;
         }
-        
+
         // 棋譜に記録
         if (!this.isReplaying) {
             this.recordMove({
@@ -708,15 +686,15 @@ export class ShogiGame {
                 captured: captured ? captured.replace('+', '') : null
             });
         }
-        
+
         this.switchTurn();
         this.updateUI();
-        
+
         // 局面を記録（千日手判定用）
         if (!this.isReplaying) {
             this.recordPosition();
         }
-        
+
         // ゲーム終了チェックとAIの手
         if (!this.gameOver) {
             this.checkRepetition(); // 千日手チェック
@@ -727,21 +705,21 @@ export class ShogiGame {
             }, UI_UPDATE_DELAY);
         }
     }
-    
+
     /**
      * 成りが可能かどうか
      */
     canPromote(piece, fromRow, toRow) {
         if (!piece || piece.includes('+')) return false;
         if (piece.toLowerCase() === PIECE_TYPE.KING || piece.toLowerCase() === PIECE_TYPE.GOLD) return false;
-        
+
         const isSente = this.isSente(piece);
         const inEnemyTerritory = (isSente && toRow < ENEMY_TERRITORY_SENTE) || (!isSente && toRow > ENEMY_TERRITORY_GOTE);
         const fromEnemyTerritory = (isSente && fromRow < ENEMY_TERRITORY_SENTE) || (!isSente && fromRow > ENEMY_TERRITORY_GOTE);
-        
+
         return inEnemyTerritory || fromEnemyTerritory;
     }
-    
+
     /**
      * AIが成るべきかどうか
      */
@@ -749,7 +727,7 @@ export class ShogiGame {
         const pieceType = piece.toLowerCase();
         return pieceType !== PIECE_TYPE.KING && pieceType !== PIECE_TYPE.GOLD;
     }
-    
+
     /**
      * 成り選択モーダルを表示
      */
@@ -761,7 +739,7 @@ export class ShogiGame {
             modal.classList.remove('hidden');
         }
     }
-    
+
     /**
      * 成り選択モーダルを非表示
      */
@@ -771,16 +749,16 @@ export class ShogiGame {
             modal.classList.add('hidden');
         }
     }
-    
+
     /**
      * 成り選択を処理
      */
     handlePromotionChoice(promote) {
         if (!this.pendingPromotion) return;
-        
+
         const { fromRow, fromCol, toRow, toCol, piece, captured } = this.pendingPromotion;
         this.hidePromoteModal();
-        
+
         // 既に駒の移動と駒取りは完了しているため、成りの処理のみを行う
         if (promote === true) {
             // 成る場合
@@ -790,7 +768,7 @@ export class ShogiGame {
             }
         }
         // 成らない場合は何もしない（既に移動済み）
-        
+
         // 棋譜に記録（成りの選択を含む）
         if (!this.isReplaying) {
             this.recordMove({
@@ -804,7 +782,7 @@ export class ShogiGame {
                 captured: captured ? captured.replace('+', '') : null
             });
         }
-        
+
         // 王が取られたかチェック
         const capturedPiece = captured ? captured.replace('+', '').toLowerCase() : null;
         if (capturedPiece === PIECE_TYPE.KING) {
@@ -814,19 +792,19 @@ export class ShogiGame {
             this.pendingPromotion = null;
             return;
         }
-        
+
         // 成り選択をクリア
         this.pendingPromotion = null;
-        
+
         // 手番を切り替え
         this.switchTurn();
         this.updateUI();
-        
+
         // 局面を記録（千日手判定用）
         if (!this.isReplaying) {
             this.recordPosition();
         }
-        
+
         // ゲーム終了チェックとAIの手
         if (!this.gameOver) {
             this.checkRepetition(); // 千日手チェック
@@ -840,10 +818,10 @@ export class ShogiGame {
      */
     dropPiece(piece, row, col) {
         if (this.board[row][col]) return false;
-        
+
         const pieceType = piece.toLowerCase();
         const droppedPiece = this.currentTurn === PLAYER.SENTE ? pieceType.toUpperCase() : pieceType;
-        
+
         // 二歩のチェック
         if (pieceType === PIECE_TYPE.PAWN) {
             for (let r = 0; r < BOARD_SIZE; r++) {
@@ -852,7 +830,7 @@ export class ShogiGame {
                 }
             }
         }
-        
+
         // 棋譜に記録
         if (!this.isReplaying) {
             this.recordMove({
@@ -862,23 +840,23 @@ export class ShogiGame {
                 toCol: col
             });
         }
-        
+
         this.board[row][col] = droppedPiece;
-        
+
         // 持ち駒から削除
         const index = this.capturedPieces[this.currentTurn].indexOf(pieceType);
         if (index > -1) {
             this.capturedPieces[this.currentTurn].splice(index, 1);
         }
-        
+
         this.switchTurn();
         this.updateUI();
-        
+
         // 局面を記録（千日手判定用）
         if (!this.isReplaying) {
             this.recordPosition();
         }
-        
+
         // ゲーム終了チェックとAIの手
         if (!this.gameOver) {
             this.checkRepetition(); // 千日手チェック
@@ -888,7 +866,7 @@ export class ShogiGame {
                 this.checkAndMakeAIMove();
             }, UI_UPDATE_DELAY);
         }
-        
+
         return true;
     }
 
@@ -898,16 +876,16 @@ export class ShogiGame {
     renderBoard() {
         const boardElement = document.getElementById('board');
         if (!boardElement) return;
-        
+
         boardElement.innerHTML = '';
-        
+
         for (let row = 0; row < BOARD_SIZE; row++) {
             for (let col = 0; col < BOARD_SIZE; col++) {
                 const cell = document.createElement('div');
                 cell.className = 'cell';
                 cell.dataset.row = row;
                 cell.dataset.col = col;
-                
+
                 const piece = this.board[row][col];
                 if (piece) {
                     const pieceElement = document.createElement('div');
@@ -915,7 +893,7 @@ export class ShogiGame {
                     pieceElement.textContent = this.getPieceName(piece);
                     cell.appendChild(pieceElement);
                 }
-                
+
                 cell.addEventListener('click', () => this.handleCellClick(row, col));
                 boardElement.appendChild(cell);
             }
@@ -927,9 +905,9 @@ export class ShogiGame {
      */
     handleCellClick(row, col) {
         if (!this.gameStarted || this.gameOver || this.isAITurn()) return;
-        
+
         const piece = this.board[row][col];
-        
+
         // 持ち駒が選択されている場合
         if (this.selectedCapturedPiece) {
             if (!piece) {
@@ -950,12 +928,12 @@ export class ShogiGame {
             }
             return;
         }
-        
+
         if (this.selectedCell) {
             const [selectedRow, selectedCol] = this.selectedCell;
             const possibleMoves = this.getPossibleMoves(selectedRow, selectedCol);
             const isValidMove = possibleMoves.some(([r, c]) => r === row && c === col);
-            
+
             if (isValidMove) {
                 this.movePiece(selectedRow, selectedCol, row, col);
             } else {
@@ -980,7 +958,7 @@ export class ShogiGame {
      */
     isCurrentPlayerPiece(piece) {
         return (this.currentTurn === PLAYER.SENTE && this.isSente(piece)) ||
-               (this.currentTurn === PLAYER.GOTE && this.isGote(piece));
+            (this.currentTurn === PLAYER.GOTE && this.isGote(piece));
     }
 
     /**
@@ -992,7 +970,7 @@ export class ShogiGame {
             const [row, col] = this.selectedCell;
             const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
             if (cell) cell.classList.add('selected');
-            
+
             const possibleMoves = this.getPossibleMoves(row, col);
             possibleMoves.forEach(([r, c]) => {
                 const moveCell = document.querySelector(`[data-row="${r}"][data-col="${c}"]`);
@@ -1017,19 +995,19 @@ export class ShogiGame {
     updateCapturedPieces() {
         const topList = document.getElementById('capturedTopList');
         const bottomList = document.getElementById('capturedBottomList');
-        
+
         if (!topList || !bottomList) return;
-        
+
         topList.innerHTML = '';
         bottomList.innerHTML = '';
-        
+
         // 持ち駒を集計
         const gotePieces = this.countPieces(this.capturedPieces.gote);
         const sentePieces = this.countPieces(this.capturedPieces.sente);
-        
+
         // 後手の持ち駒を表示
         this.renderCapturedPieces(gotePieces, topList, PLAYER.GOTE);
-        
+
         // 先手の持ち駒を表示
         this.renderCapturedPieces(sentePieces, bottomList, PLAYER.SENTE);
     }
@@ -1053,17 +1031,17 @@ export class ShogiGame {
             const count = pieces[piece];
             const pieceElement = document.createElement('div');
             pieceElement.className = 'captured-piece';
-            pieceElement.textContent = count > 1 
-                ? `${this.getPieceName(piece)}×${count}` 
+            pieceElement.textContent = count > 1
+                ? `${this.getPieceName(piece)}×${count}`
                 : this.getPieceName(piece);
             pieceElement.dataset.piece = piece;
-            
-            if (this.selectedCapturedPiece && 
-                this.selectedCapturedPiece.piece === piece && 
+
+            if (this.selectedCapturedPiece &&
+                this.selectedCapturedPiece.piece === piece &&
                 this.selectedCapturedPiece.player === player) {
                 pieceElement.classList.add('selected-captured');
             }
-            
+
             pieceElement.addEventListener('click', () => this.handleCapturedPieceClick(piece, player));
             container.appendChild(pieceElement);
         });
@@ -1074,57 +1052,27 @@ export class ShogiGame {
      */
     handleCapturedPieceClick(piece, player) {
         if (!this.gameStarted || player !== this.currentTurn || this.gameOver) return;
-        
-        if (this.selectedCapturedPiece && 
-            this.selectedCapturedPiece.piece === piece && 
+
+        if (this.selectedCapturedPiece &&
+            this.selectedCapturedPiece.piece === piece &&
             this.selectedCapturedPiece.player === player) {
             this.selectedCapturedPiece = null;
         } else {
             this.selectedCapturedPiece = { piece: piece, player: player };
             this.selectedCell = null;
         }
-        
+
         this.updateCapturedPieces();
         this.highlightDropPositions();
     }
-    
+
     /**
      * 持ち駒を打てるかどうか
      */
     canDropPiece(piece, row, col) {
-        if (this.board[row][col]) return false;
-        
-        const pieceType = piece.toLowerCase();
-        
-        // 二歩のチェック
-        if (pieceType === PIECE_TYPE.PAWN) {
-            const droppedPiece = this.currentTurn === PLAYER.SENTE ? 'P' : 'p';
-            for (let r = 0; r < BOARD_SIZE; r++) {
-                if (this.board[r][col] === droppedPiece) {
-                    return false;
-                }
-            }
-            
-            // 打ち歩詰めのチェック（簡易版）
-            if (this.currentTurn === PLAYER.SENTE && row === 0) return false;
-            if (this.currentTurn === PLAYER.GOTE && row === BOARD_SIZE - 1) return false;
-        }
-        
-        // 桂馬は敵陣の最下段・2段目には打てない
-        if (pieceType === PIECE_TYPE.KNIGHT) {
-            if (this.currentTurn === PLAYER.SENTE && row <= 1) return false;
-            if (this.currentTurn === PLAYER.GOTE && row >= BOARD_SIZE - 2) return false;
-        }
-        
-        // 香車は敵陣の最下段には打てない
-        if (pieceType === PIECE_TYPE.LANCE) {
-            if (this.currentTurn === PLAYER.SENTE && row === 0) return false;
-            if (this.currentTurn === PLAYER.GOTE && row === BOARD_SIZE - 1) return false;
-        }
-        
-        return true;
+        return this.canDropPieceForTurn(piece, row, col, this.currentTurn);
     }
-    
+
     /**
      * 打てる位置をハイライト
      */
@@ -1175,7 +1123,7 @@ export class ShogiGame {
         if (!this.gameStarted) {
             return;
         }
-        
+
         // 既にAI思考中なら待機（AI vs AIでの重複リクエスト防止）
         if (this.aiInProgress || this.aiMovePromise) {
             console.debug('[Game] AI思考が既に進行中のため、新しい思考をスキップ', {
@@ -1185,34 +1133,34 @@ export class ShogiGame {
             });
             return;
         }
-        
+
         if (!this.isAITurn() || this.gameOver || this.isReplaying) {
             return;
         }
-        
+
         if (this.aiStopped) {
             console.warn('[Game] AIが停止状態のため思考をスキップ（USIエンジン停止）');
             return;
         }
-        
+
         // フラグを設定（重複呼び出し防止）
         this.aiInProgress = true;
-        
+
         // どちらの手番かを明確にログ出力
         const playerName = this.currentTurn === PLAYER.SENTE ? '先手' : '後手';
         const gameModeInfo = `[${playerName}AI思考中]`;
-        
+
         this.showAIThinking();
-        
+
         // 現在の手番に応じたAIを取得
         const currentAI = this.getCurrentAI();
-        
+
         // AIがnull（人間）の場合はスキップ
         if (!currentAI) {
             this.cleanupAIMove();
             return;
         }
-        
+
         // Ollama/USIの場合は非同期処理
         if (currentAI.level === AI_LEVEL.OLLAMA || currentAI.level === AI_LEVEL.USI) {
             const levelName = currentAI.level === AI_LEVEL.OLLAMA ? 'Ollama' : 'USI';
@@ -1227,89 +1175,98 @@ export class ShogiGame {
                 logInfo.serverUrl = currentAI.usiClient && currentAI.usiClient.serverUrl;
             }
             console.info(`[Game] ${gameModeInfo} ${levelName} async move start`, logInfo);
-            
+
             // 非同期処理を開始し、Promiseを保存（重複防止用）
             const currentTurn = this.currentTurn;
             this.aiMovePromise = currentAI.getBestMoveAsync(this, currentTurn)
-                    .then(move => {
-                        // ゲーム状態が変わっていないか確認
-                        if (this.gameOver || this.isReplaying || this.currentTurn !== currentTurn) {
-                            console.warn('[Game] ゲーム状態が変更されたため、AIの手をスキップ', {
-                                gameOver: this.gameOver,
-                                isReplaying: this.isReplaying,
-                                expectedTurn: currentTurn,
-                                actualTurn: this.currentTurn
-                            });
-                            this.cleanupAIMove();
-                            return;
-                        }
-                        
-                        if (move) {
-                            const playerName = currentTurn === PLAYER.SENTE ? '先手' : '後手';
-                            console.info(`[Game] [${playerName}AI] の手を適用`, {
-                                type: move.type,
-                                player: playerName,
-                                turn: currentTurn,
-                                move: move.type === 'move' 
-                                    ? `${move.fromRow},${move.fromCol} → ${move.toRow},${move.toCol}`
-                                    : `${move.piece}打 → ${move.toRow},${move.toCol}`
-                            });
-                            
-                            // 手を適用する前にクリーンアップ（次の思考の準備）
-                            // 注意: movePiece/dropPiece内で次のAI思考が開始されるため、
-                            // ここではクリーンアップのみ実行（aiInProgressフラグをリセット）
-                            this.aiInProgress = false;
-                            this.hideAIThinking();
-                            
-                            // 手を適用（movePiece/dropPiece内で次のAI思考が開始される）
-                            if (move.type === 'move') {
-                                // USIエンジンのbestmoveの成りフラグを反映
-                                const promote = move.promoted === true ? true : (move.promoted === false ? false : null);
-                                this.movePiece(move.fromRow, move.fromCol, move.toRow, move.toCol, promote);
-                            } else if (move.type === 'drop') {
-                                this.dropPiece(move.piece, move.toRow, move.toCol);
-                            }
-                        } else {
-                            const playerName = currentTurn === PLAYER.SENTE ? '先手' : '後手';
-                            console.warn(`[Game] [${playerName}AI] が手を返しませんでした（投了またはエラー）`, {
-                                player: playerName,
-                                turn: currentTurn
-                            });
-                            this.cleanupAIMove();
-                        }
-                    })
-                    .catch(error => {
+                .then(move => {
+                    // ゲーム状態が変わっていないか確認
+                    if (this.gameOver || this.isReplaying || this.currentTurn !== currentTurn) {
+                        console.warn('[Game] ゲーム状態が変更されたため、AIの手をスキップ', {
+                            gameOver: this.gameOver,
+                            isReplaying: this.isReplaying,
+                            expectedTurn: currentTurn,
+                            actualTurn: this.currentTurn
+                        });
+                        this.cleanupAIMove();
+                        return;
+                    }
+
+                    if (move) {
                         const playerName = currentTurn === PLAYER.SENTE ? '先手' : '後手';
-                        console.error(`[Game] [${playerName}AI] 手取得エラー:`, {
-                            error: error.message,
-                            stack: error.stack,
-                            level: currentAI.level,
+                        console.info(`[Game] [${playerName}AI] の手を適用`, {
+                            type: move.type,
+                            player: playerName,
+                            turn: currentTurn,
+                            move: move.type === 'move'
+                                ? `${move.fromRow},${move.fromCol} → ${move.toRow},${move.toCol}`
+                                : `${move.piece}打 → ${move.toRow},${move.toCol}`
+                        });
+
+                        // 手を適用する前にクリーンアップ（次の思考の準備）
+                        // 注意: movePiece/dropPiece内で次のAI思考が開始されるため、
+                        // ここではクリーンアップのみ実行（aiInProgressフラグをリセット）
+                        this.aiInProgress = false;
+                        this.hideAIThinking();
+
+                        // 手を適用（movePiece/dropPiece内で次のAI思考が開始される）
+                        if (move.type === 'move') {
+                            // USIエンジンのbestmoveの成りフラグを反映
+                            const promote = move.promoted === true ? true : (move.promoted === false ? false : null);
+                            this.movePiece(move.fromRow, move.fromCol, move.toRow, move.toCol, promote);
+                        } else if (move.type === 'drop') {
+                            this.dropPiece(move.piece, move.toRow, move.toCol);
+                        }
+                    } else {
+                        const playerName = currentTurn === PLAYER.SENTE ? '先手' : '後手';
+                        console.warn(`[Game] [${playerName}AI] が手を返しませんでした（投了またはエラー）→ 敗北として処理`, {
                             player: playerName,
                             turn: currentTurn
                         });
-                        
                         this.cleanupAIMove();
-                        
-                        if (currentAI.level === AI_LEVEL.USI && error.message && error.message.includes('エンジン')) {
-                            this.aiStopped = true;
-                            console.error('[Game] USIエンジン停止を検知。AIを停止します。', { error: error.message });
-                        }
-                    })
-                    .finally(() => {
-                        // Promiseをクリア
-                        this.aiMovePromise = null;
+                        // 相手の勝利とする
+                        this.gameOver = true;
+                        this.winner = currentTurn === PLAYER.SENTE ? PLAYER.GOTE : PLAYER.SENTE;
+                        this.showReplayMode();
+                    }
+                })
+                .catch(error => {
+                    const playerName = currentTurn === PLAYER.SENTE ? '先手' : '後手';
+                    console.error(`[Game] [${playerName}AI] 手取得エラー:`, {
+                        error: error.message,
+                        stack: error.stack,
+                        level: currentAI.level,
+                        player: playerName,
+                        turn: currentTurn
                     });
+
+                    this.cleanupAIMove();
+
+                    // エンジンエラーなどの場合も敗北とする
+                    this.gameOver = true;
+                    this.winner = currentTurn === PLAYER.SENTE ? PLAYER.GOTE : PLAYER.SENTE;
+                    this.showReplayMode();
+
+                    if (currentAI.level === AI_LEVEL.USI && error.message && error.message.includes('エンジン')) {
+                        this.aiStopped = true;
+                        console.error('[Game] USIエンジン停止を検知。AIを停止します。', { error: error.message });
+                    }
+                })
+                .finally(() => {
+                    // Promiseをクリア
+                    this.aiMovePromise = null;
+                });
         } else {
             // 通常のAIは従来通り
             const playerName = this.currentTurn === PLAYER.SENTE ? '先手' : '後手';
             const thinkingTime = AI_THINKING_TIME.MIN + Math.random() * (AI_THINKING_TIME.MAX - AI_THINKING_TIME.MIN);
-            
+
             console.info(`[Game] [${playerName}AI思考中] 通常AI思考開始`, {
                 player: playerName,
                 turn: this.currentTurn,
                 thinkingTime: `${thinkingTime}ms`
             });
-            
+
             const currentTurn = this.currentTurn;
             this.aiMoveTimeout = setTimeout(() => {
                 // ゲーム状態が変わっていないか確認
@@ -1323,26 +1280,36 @@ export class ShogiGame {
                     this.cleanupAIMove();
                     return;
                 }
-                
-                const move = currentAI.getBestMove(this, currentTurn);
-                if (move) {
-                    const appliedPlayerName = currentTurn === PLAYER.SENTE ? '先手' : '後手';
-                    console.info(`[Game] [${appliedPlayerName}AI] の手を適用`, {
-                        player: appliedPlayerName,
-                        turn: currentTurn,
-                        type: move.type
-                    });
-                    // 手を適用する前にクリーンアップ（次の思考の準備）
-                    this.aiInProgress = false;
-                    this.hideAIThinking();
-                    
-                    // 手を適用（movePiece/dropPiece内で次のAI思考が開始される）
-                    if (move.type === 'move') {
-                        this.movePiece(move.fromRow, move.fromCol, move.toRow, move.toCol);
-                    } else if (move.type === 'drop') {
-                        this.dropPiece(move.piece, move.toRow, move.toCol);
+
+                try {
+                    const move = currentAI.getBestMove(this, currentTurn);
+                    if (move) {
+                        const appliedPlayerName = currentTurn === PLAYER.SENTE ? '先手' : '後手';
+                        console.info(`[Game] [${appliedPlayerName}AI] の手を適用`, {
+                            player: appliedPlayerName,
+                            turn: currentTurn,
+                            type: move.type
+                        });
+                        // 手を適用する前にクリーンアップ（次の思考の準備）
+                        this.aiInProgress = false;
+                        this.hideAIThinking();
+
+                        // 手を適用（movePiece/dropPiece内で次のAI思考が開始される）
+                        if (move.type === 'move') {
+                            this.movePiece(move.fromRow, move.fromCol, move.toRow, move.toCol);
+                        } else if (move.type === 'drop') {
+                            this.dropPiece(move.piece, move.toRow, move.toCol);
+                        }
+                    } else {
+                        console.warn('[Game] AIが合法手を見つけられませんでした（ステイルメイトの可能性）→ 敗北として処理');
+                        this.cleanupAIMove();
+                        // 相手の勝利とする
+                        this.gameOver = true;
+                        this.winner = currentTurn === PLAYER.SENTE ? PLAYER.GOTE : PLAYER.SENTE;
+                        this.showReplayMode();
                     }
-                } else {
+                } catch (error) {
+                    console.error('[Game] AI思考中にエラーが発生しました:', error);
                     this.cleanupAIMove();
                 }
             }, thinkingTime);
@@ -1368,20 +1335,20 @@ export class ShogiGame {
             thinkingElement.classList.add('hidden');
         }
     }
-    
+
     /**
      * AI思考のクリーンアップ（フラグとタイムアウトのリセット）
      */
     cleanupAIMove() {
         this.hideAIThinking();
         this.aiInProgress = false;
-        
+
         // タイムアウトをクリア
         if (this.aiMoveTimeout) {
             clearTimeout(this.aiMoveTimeout);
             this.aiMoveTimeout = null;
         }
-        
+
         // Promiseはfinallyブロックでクリアされるが、エラー時や早期リターン時の安全性のため
         // ここでもクリア（ただし、進行中のPromiseをキャンセルしないよう注意）
         // 通常はfinallyブロックで処理されるため、ここではコメントアウト
@@ -1389,49 +1356,195 @@ export class ShogiGame {
     }
 
     /**
-     * 全ての可能な手を取得
+     * 指定位置の駒の移動可能な位置を取得（合法手：王手放置チェックあり）
+     */
+    getPossibleMoves(row, col) {
+        const moves = this.getPseudoPossibleMoves(row, col);
+
+        // 王手放置チェックを入れてフィルタリング
+        return moves.filter(([toRow, toCol]) => {
+            return this.isMoveSafe({
+                type: 'move',
+                fromRow: row,
+                fromCol: col,
+                toRow: toRow,
+                toCol: toCol
+            });
+        });
+    }
+
+    /**
+     * 指定位置の駒の移動可能な位置を取得（疑似合法手：王手放置チェックなし）
+     * @param {number} row 行
+     * @param {number} col 列
+     * @param {string|null} turn 手番（省略時は現在のターン）
+     */
+    getPseudoPossibleMoves(row, col, turn = null) {
+        const checkTurn = turn || this.currentTurn;
+        const piece = this.board[row][col];
+        if (!piece) return [];
+
+        const isTurnPiece = (checkTurn === PLAYER.SENTE && this.isSente(piece)) ||
+            (checkTurn === PLAYER.GOTE && this.isGote(piece));
+        if (!isTurnPiece) return [];
+
+        // PieceMovesクラスを使用して移動可能な位置を取得
+        this.pieceMoves.board = this.board; // 最新の盤面を反映
+        const moves = this.pieceMoves.getMovesForPiece(row, col, piece);
+
+        // 自分の駒を取らないようにフィルタリング
+        return moves.filter(([r, c]) => {
+            const target = this.board[r][c];
+            if (!target) return true;
+            return (checkTurn === PLAYER.SENTE && this.isGote(target)) ||
+                (checkTurn === PLAYER.GOTE && this.isSente(target));
+        });
+    }
+
+    /**
+     * 全ての可能な手を取得（合法手）
      */
     getAllPossibleMoves(turn) {
+        const pseudoMoves = this.getAllPseudoPossibleMoves(turn);
+
+        // 合法手のみにフィルタリング
+        return pseudoMoves.filter(move => this.isMoveSafe(move, turn));
+    }
+
+    /**
+     * 全ての可能な手を取得（疑似合法手）
+     */
+    getAllPseudoPossibleMoves(turn) {
         const moves = [];
-        
+
         // 盤上の駒の移動
         for (let row = 0; row < BOARD_SIZE; row++) {
             for (let col = 0; col < BOARD_SIZE; col++) {
                 const piece = this.board[row][col];
+                // 駒があり、指定した手番の駒である場合
                 if (piece && this.isPlayerPiece(piece, turn)) {
-                    const possibleMoves = this.getPossibleMoves(row, col);
-                    possibleMoves.forEach(([toRow, toCol]) => {
+                    // 更新されたgetPseudoPossibleMovesを使用して手を取得
+                    const pseudoMoves = this.getPseudoPossibleMoves(row, col, turn);
+
+                    pseudoMoves.forEach(([toRow, toCol]) => {
                         moves.push({
                             type: 'move',
                             fromRow: row,
                             fromCol: col,
                             toRow: toRow,
-                            toCol: toCol
+                            toCol: toCol,
+                            piece: piece // 手作成時に駒情報を含める
                         });
                     });
                 }
             }
         }
-        
+
         // 持ち駒を打つ手
         const capturedPieces = this.capturedPieces[turn];
         const uniquePieces = [...new Set(capturedPieces)];
         uniquePieces.forEach(piece => {
             for (let row = 0; row < BOARD_SIZE; row++) {
                 for (let col = 0; col < BOARD_SIZE; col++) {
-                    if (!this.board[row][col] && this.canDropPiece(piece, row, col)) {
-                        moves.push({
-                            type: 'drop',
-                            piece: piece,
-                            toRow: row,
-                            toCol: col
-                        });
+                    if (!this.board[row][col] && this.canDropPiece(piece, row, col)) { // canDropPiece uses currentTurn internally? No, need to check
+                        // canDropPiece uses this.currentTurn. Need to be careful if turn != currentTurn
+                        // But usually getAllPseudoPossibleMoves is called for currentTurn or for checking opponent moves.
+                        // For opponent moves (isInCheck), drops are relevant?
+                        // Yes.
+                        // We need a version of canDropPiece that accepts turn.
+                        if (this.canDropPieceForTurn(piece, row, col, turn)) {
+                            moves.push({
+                                type: 'drop',
+                                piece: piece,
+                                toRow: row,
+                                toCol: col
+                            });
+                        }
                     }
                 }
             }
         });
-        
+
         return moves;
+    }
+
+    /**
+     * 指定した手番で持ち駒を打てるかどうか
+     */
+    canDropPieceForTurn(piece, row, col, turn) {
+        if (this.board[row][col]) return false;
+
+        const pieceType = piece.toLowerCase();
+
+        // 二歩のチェック
+        if (pieceType === PIECE_TYPE.PAWN) {
+            const droppedPiece = turn === PLAYER.SENTE ? 'P' : 'p';
+            for (let r = 0; r < BOARD_SIZE; r++) {
+                if (this.board[r][col] === droppedPiece) {
+                    return false;
+                }
+            }
+
+            // 打ち歩詰めのチェック（簡易版）
+            if (turn === PLAYER.SENTE && row === 0) return false;
+            if (turn === PLAYER.GOTE && row === BOARD_SIZE - 1) return false;
+        }
+
+        // 桂馬は敵陣の最下段・2段目には打てない
+        if (pieceType === PIECE_TYPE.KNIGHT) {
+            if (turn === PLAYER.SENTE && row <= 1) return false;
+            if (turn === PLAYER.GOTE && row >= BOARD_SIZE - 2) return false;
+        }
+
+        // 香車は敵陣の最下段には打てない
+        if (pieceType === PIECE_TYPE.LANCE) {
+            if (turn === PLAYER.SENTE && row === 0) return false;
+            if (turn === PLAYER.GOTE && row === BOARD_SIZE - 1) return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * 手が安全かどうか（王手放置にならないか）を判定
+     */
+    isMoveSafe(move, turn) {
+        const checkTurn = turn || this.currentTurn;
+
+        // 盤面をバックアップ
+        const originalBoard = this.board.map(row => [...row]);
+        const originalCaptured = {
+            sente: [...this.capturedPieces.sente],
+            gote: [...this.capturedPieces.gote]
+        };
+
+        // 仮想的に手を実行
+        if (move.type === 'move') {
+            const piece = this.board[move.fromRow][move.fromCol];
+            const target = this.board[move.toRow][move.toCol];
+
+            this.board[move.toRow][move.toCol] = piece;
+            this.board[move.fromRow][move.fromCol] = null;
+
+            // 取った駒の処理は kingInCheck には影響しないが、盤面状態としては重要
+            // しかし王手判定は「王への利き」を見るだけなので、持ち駒の増減は影響しない
+            // （相手の持ち駒が増えると打てる手が増えるが、相手の手番の有効手を判定するわけではない）
+            // 自分の持ち駒が減る（打つ場合）も同様。
+
+        } else if (move.type === 'drop') {
+            const pieceType = move.piece.toLowerCase();
+            const droppedPiece = checkTurn === PLAYER.SENTE ? pieceType.toUpperCase() : pieceType;
+            this.board[move.toRow][move.toCol] = droppedPiece;
+        }
+
+        // 王手状態かチェック
+        const isSafe = !this.isInCheck(checkTurn);
+
+        // 盤面を復元
+        this.board = originalBoard;
+        this.capturedPieces = originalCaptured; // 実際には変更していないが念のため
+
+        return isSafe;
     }
 
     /**
@@ -1439,7 +1552,7 @@ export class ShogiGame {
      */
     isPlayerPiece(piece, turn) {
         return (turn === PLAYER.SENTE && this.isSente(piece)) ||
-               (turn === PLAYER.GOTE && this.isGote(piece));
+            (turn === PLAYER.GOTE && this.isGote(piece));
     }
 
     /**
@@ -1487,11 +1600,11 @@ export class ShogiGame {
                 boardStr += (this.board[row][col] || '.');
             }
         }
-        
+
         // 持ち駒をソートして文字列化
         const senteCaptured = [...this.capturedPieces.sente].sort().join('');
         const goteCaptured = [...this.capturedPieces.gote].sort().join('');
-        
+
         // 手番を含めた局面キー
         return `${boardStr}|${senteCaptured}|${goteCaptured}|${this.currentTurn}`;
     }
@@ -1503,7 +1616,7 @@ export class ShogiGame {
         const kingPiece = player === PLAYER.SENTE ? 'K' : 'k';
         let kingRow = -1;
         let kingCol = -1;
-        
+
         // 王の位置を探す
         for (let row = 0; row < BOARD_SIZE; row++) {
             for (let col = 0; col < BOARD_SIZE; col++) {
@@ -1516,13 +1629,13 @@ export class ShogiGame {
             }
             if (kingRow !== -1) break;
         }
-        
+
         if (kingRow === -1) return false;
-        
+
         // 相手の駒が王を攻撃できるかチェック
         const opponent = player === PLAYER.SENTE ? PLAYER.GOTE : PLAYER.SENTE;
-        const allOpponentMoves = this.getAllPossibleMoves(opponent);
-        
+        const allOpponentMoves = this.getAllPseudoPossibleMoves(opponent);
+
         return allOpponentMoves.some(move => {
             if (move.type === 'move') {
                 return move.toRow === kingRow && move.toCol === kingCol;
@@ -1539,13 +1652,13 @@ export class ShogiGame {
         // 手を打った側（前の手番）が相手に王手をかけているかチェック
         const previousTurn = this.currentTurn === PLAYER.SENTE ? PLAYER.GOTE : PLAYER.SENTE;
         const isGivingCheck = this.isInCheck(this.currentTurn); // 現在の手番のプレイヤーが王手を受けている = 前の手番のプレイヤーが王手をかけている
-        
+
         this.positionHistory.push({
             key: positionKey,
             turn: this.currentTurn,
             isCheck: isGivingCheck
         });
-        
+
         // 王手の履歴も記録（連続王手の千日手判定用）
         // 手を打った側（previousTurn）が相手に王手をかけていたかどうか
         this.checkHistory.push(isGivingCheck);
@@ -1556,19 +1669,19 @@ export class ShogiGame {
      */
     checkRepetition() {
         if (this.positionHistory.length < 4) return;
-        
+
         // 最後の4局面をチェック
         const recentPositions = this.positionHistory.slice(-4);
         const firstKey = recentPositions[0].key;
-        
+
         // 同じ局面が4回出現しているかチェック
         const allSame = recentPositions.every(pos => pos.key === firstKey);
-        
+
         if (allSame) {
             // 連続王手の千日手かチェック
             const recentChecks = this.checkHistory.slice(-4);
             const isContinuousCheck = recentChecks.every(check => check === true);
-            
+
             if (isContinuousCheck) {
                 // 連続王手の千日手：王手をかけている側が負け
                 // 最後の手を打った側が王手をかけている
@@ -1593,7 +1706,7 @@ export class ShogiGame {
     showRepetitionMessage(type, loser) {
         const controls = document.querySelector('.move-history-controls');
         if (!controls) return;
-        
+
         let message = '';
         if (type === '連続王手の千日手') {
             const loserName = loser === PLAYER.SENTE ? '先手' : '後手';
@@ -1601,7 +1714,7 @@ export class ShogiGame {
         } else {
             message = `⚠️ ${type}：引き分け`;
         }
-        
+
         let messageElement = document.getElementById('gameEndMessage');
         if (!messageElement) {
             messageElement = document.createElement('div');
@@ -1619,7 +1732,7 @@ export class ShogiGame {
     showGameEndMessage() {
         const controls = document.querySelector('.move-history-controls');
         if (!controls) return;
-        
+
         let message = '';
         if (this.winner === PLAYER.SENTE) {
             message = '🎉 先手の勝ち！';
@@ -1628,7 +1741,7 @@ export class ShogiGame {
         } else {
             message = 'ゲーム終了（引き分け）';
         }
-        
+
         let messageElement = document.getElementById('gameEndMessage');
         if (!messageElement) {
             messageElement = document.createElement('div');
@@ -1638,18 +1751,18 @@ export class ShogiGame {
         }
         messageElement.textContent = message;
     }
-    
+
     /**
      * 再生モードを表示
      */
     showReplayMode() {
         this.showGameEndMessage();
-        
+
         // 盤面と持ち駒の操作を無効化
         document.querySelectorAll('.cell, .captured-piece').forEach(element => {
             element.style.pointerEvents = 'none';
         });
-        
+
         // 棋譜コントロールを強調表示
         const controls = document.querySelector('.move-history-controls');
         const panel = document.querySelector('.move-history-panel');
@@ -1663,10 +1776,10 @@ export class ShogiGame {
             panel.style.background = '#fff3cd';
             panel.style.border = '2px solid #ffc107';
         }
-        
+
         this.updateMoveControls();
     }
-    
+
     /**
      * 再生モードを終了
      */
@@ -1675,11 +1788,11 @@ export class ShogiGame {
         if (messageElement) {
             messageElement.remove();
         }
-        
+
         document.querySelectorAll('.cell, .captured-piece').forEach(element => {
             element.style.pointerEvents = '';
         });
-        
+
         const controls = document.querySelector('.move-history-controls');
         const panel = document.querySelector('.move-history-panel');
         if (controls) {
@@ -1691,7 +1804,7 @@ export class ShogiGame {
             panel.style.border = '';
         }
     }
-    
+
     /**
      * ゲームを終了
      */
@@ -1717,7 +1830,7 @@ export class ShogiGame {
      */
     restoreFromHistory(targetIndex) {
         this.isReplaying = true;
-        
+
         // 初期状態に戻す
         this.board = this.initializeBoard();
         this.capturedPieces = { sente: [], gote: [] };
@@ -1725,7 +1838,7 @@ export class ShogiGame {
         this.gameOver = false;
         this.winner = null;
         // 局面履歴は保持（千日手判定のため）
-        
+
         // 指定された手まで再生
         for (let i = 0; i <= targetIndex && i < this.moveHistory.length; i++) {
             const move = this.moveHistory[i];
@@ -1735,13 +1848,13 @@ export class ShogiGame {
                 this.dropPiece(move.piece, move.toRow, move.toCol);
             }
         }
-        
+
         this.isReplaying = false;
         this.currentMoveIndex = targetIndex;
         this.updateMoveHistoryDisplay();
         this.updateMoveControls();
     }
-    
+
     /**
      * 一手戻る
      */
@@ -1750,7 +1863,7 @@ export class ShogiGame {
             this.restoreFromHistory(this.currentMoveIndex - 1);
         }
     }
-    
+
     /**
      * 一手進む
      */
@@ -1759,21 +1872,21 @@ export class ShogiGame {
             this.restoreFromHistory(this.currentMoveIndex + 1);
         }
     }
-    
+
     /**
      * 最初の手へ
      */
     goToFirstMove() {
         this.restoreFromHistory(-1);
     }
-    
+
     /**
      * 最後の手へ
      */
     goToLastMove() {
         this.restoreFromHistory(this.moveHistory.length - 1);
     }
-    
+
     /**
      * 棋譜コントロールを更新
      */
@@ -1783,10 +1896,10 @@ export class ShogiGame {
         const firstBtn = document.getElementById('firstMoveBtn');
         const lastBtn = document.getElementById('lastMoveBtn');
         const counter = document.getElementById('moveCounter');
-        
+
         const totalMoves = this.moveHistory.length;
         const currentMove = this.currentMoveIndex + 1;
-        
+
         if (prevBtn) prevBtn.disabled = this.currentMoveIndex < 0;
         if (nextBtn) nextBtn.disabled = this.currentMoveIndex >= totalMoves - 1;
         if (firstBtn) firstBtn.disabled = this.currentMoveIndex < 0;
@@ -1800,20 +1913,20 @@ export class ShogiGame {
             }
         }
     }
-    
+
     /**
      * 棋譜表示を更新
      */
     updateMoveHistoryDisplay() {
         const listElement = document.getElementById('moveHistoryList');
         if (!listElement) return;
-        
+
         listElement.innerHTML = '';
-        
+
         this.moveHistory.forEach((move, index) => {
             const moveElement = document.createElement('div');
             moveElement.className = `move-item ${index === this.currentMoveIndex ? 'current' : ''}`;
-            
+
             let moveText = '';
             if (move.type === 'move') {
                 const pieceName = this.getPieceName(move.piece);
@@ -1829,16 +1942,16 @@ export class ShogiGame {
                 const toPos = this.positionToNotation(move.toRow, move.toCol);
                 moveText = `${index + 1}. ${move.turn === PLAYER.SENTE ? '先手' : '後手'} ${pieceName}打${toPos}`;
             }
-            
+
             moveElement.textContent = moveText;
             moveElement.addEventListener('click', () => {
                 this.restoreFromHistory(index);
             });
-            
+
             listElement.appendChild(moveElement);
         });
     }
-    
+
     /**
      * 位置を表記に変換
      */
@@ -1859,7 +1972,7 @@ export class ShogiGame {
                 gote: this.capturedPieces.gote.slice()
             }
         });
-        
+
         // 現在の位置より後ろの手を削除（分岐を削除）
         this.moveHistory = this.moveHistory.slice(0, this.currentMoveIndex + 1);
         this.moveHistory.push(moveRecord);
@@ -1893,11 +2006,11 @@ export class ShogiGame {
     reset() {
         // ゲーム開始フラグを設定
         this.gameStarted = true;
-        
+
         // 進行中のAI思考をクリーンアップ
         this.cleanupAIMove();
         this.aiMovePromise = null;
-        
+
         this.board = this.initializeBoard();
         this.currentTurn = PLAYER.SENTE;
         this.selectedCell = null;
@@ -1911,11 +2024,11 @@ export class ShogiGame {
         this.isReplaying = false;
         this.positionHistory = [];
         this.checkHistory = [];
-        
+
         // AIレベルを更新（先手と後手の設定を読み込む）
         const aiLevelSenteSelect = document.getElementById('aiLevelSente');
         const aiLevelGoteSelect = document.getElementById('aiLevelGote');
-        
+
         if (aiLevelSenteSelect) {
             this.aiLevelSente = aiLevelSenteSelect.value;
         }
@@ -1924,21 +2037,21 @@ export class ShogiGame {
         }
         this.aiSente = this.createAI(PLAYER.SENTE);
         this.aiGote = this.createAI(PLAYER.GOTE);
-        
+
         // USIエンジンが選択されている場合、エンジンに接続してエンジン名を取得
         // （ニューゲームボタンが押された時点で接続する）
         this.initializeUSIEngines();
-        
+
         // PieceMovesを更新
         this.pieceMoves.board = this.board;
-        
+
         this.updateUI();
         // updateUI()の後に確実に設定を更新
         this.scheduleAISettingsUpdate();
         this.hideAIThinking();
         this.hidePromoteModal();
         this.exitReplayMode();
-        
+
         // AIの手番の場合は最初からAIが手を打つ
         if (this.isAITurn()) {
             // クリーンアップを確実に実行してから次の思考を開始
@@ -2023,7 +2136,7 @@ export class ShogiGame {
             null: '引き分け'
         };
 
-        const timestamp = kifuData.timestamp 
+        const timestamp = kifuData.timestamp
             ? new Date(kifuData.timestamp).toLocaleString('ja-JP')
             : '不明';
 
@@ -2032,7 +2145,7 @@ export class ShogiGame {
 
         // 既存の棋譜があるかチェック
         const hasExistingKifu = this.moveHistory.length > 0;
-        const existingKifuWarning = hasExistingKifu 
+        const existingKifuWarning = hasExistingKifu
             ? `<div style="margin-bottom: 15px; padding: 10px; background: #fff3cd; border: 2px solid #ffc107; border-radius: 5px; color: #856404;">
                 <strong>⚠️ 注意:</strong> 既存の棋譜（${this.moveHistory.length}手）があります。この棋譜を読み込むと、既存の棋譜は上書きされます。
             </div>`
@@ -2056,7 +2169,7 @@ export class ShogiGame {
 
         // モーダルを表示
         this.showKifuDataModal();
-        
+
         // モーダル表示後に棋譜リストを表示（確実に要素が存在するように）
         setTimeout(() => {
             this.showKifuDataList(kifuData.moves);
@@ -2086,7 +2199,7 @@ export class ShogiGame {
                 listElement.innerHTML = '<div style="text-align: center; color: #666;">棋譜のフォーマットに失敗しました</div>';
                 return;
             }
-            
+
             listElement.innerHTML = `
                 <div style="margin-bottom: 10px; font-weight: bold; font-size: 1.1em;">全棋譜リスト（${moves.length}手）</div>
                 <div style="font-size: 0.9em; line-height: 1.6;">
@@ -2110,7 +2223,7 @@ export class ShogiGame {
             try {
                 let moveText = '';
                 if (move.type === 'move') {
-                    if (move.fromRow === undefined || move.fromCol === undefined || 
+                    if (move.fromRow === undefined || move.fromCol === undefined ||
                         move.toRow === undefined || move.toCol === undefined) {
                         return `<div style="padding: 3px 0; border-bottom: 1px solid #eee; color: #e74c3c;">${index + 1}. 無効な手データ</div>`;
                     }
@@ -2145,7 +2258,7 @@ export class ShogiGame {
      */
     formatKifuPreview(moves) {
         if (!moves || moves.length === 0) return 'なし';
-        
+
         return moves.map((move, index) => {
             if (move.type === 'move') {
                 const fromPos = this.positionToNotation(move.fromRow, move.fromCol);
@@ -2219,7 +2332,7 @@ export class ShogiGame {
         this.isReplaying = true;
         // 棋譜をmoveHistoryに直接追加（isReplaying中はrecordMoveが呼ばれないため）
         this.moveHistory = kifuData.moves.map(move => Object.assign({}, move));
-        
+
         for (let i = 0; i < kifuData.moves.length; i++) {
             // 各手を再生する前にcurrentMoveIndexを更新（updateUI内でupdateMoveControlsが呼ばれるため）
             this.currentMoveIndex = i;
@@ -2255,7 +2368,7 @@ let game;
 window.addEventListener('DOMContentLoaded', () => {
     game = new ShogiGame();
     window.game = game; // デバッグ用にwindowに公開
-    
+
     // ゲーム開始前はAIが自動で手を打たない（ニューゲームボタンを押すまで待機）
     // 初期状態では gameStarted = false のため、AIは動作しない
 });
