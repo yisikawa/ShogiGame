@@ -27,18 +27,70 @@ export const AI_LEVEL = {
     USI: 'usi' // USIプロトコルを使用
 };
 
-// Ollama設定
-export const OLLAMA_CONFIG = {
-    ENDPOINT: 'http://localhost:11434', // Ollama APIエンドポイント
-    MODEL: 'gemma3:1b', // デフォルトモデル
-    TIMEOUT: 30000 // タイムアウト（ミリ秒）
+// コンフィグ読み込み
+import { loadConfig, getConfig } from './config.js';
+
+// デフォルト設定（フォールバック用）
+const DEFAULT_OLLAMA_CONFIG = {
+    ENDPOINT: 'http://localhost:11434',
+    MODEL: 'gemma3:1b',
+    TIMEOUT: 30000
 };
 
-// USI設定
-export const USI_CONFIG = {
-    SERVER_URL: 'http://localhost:8080', // USIサーバーのURL
-    TIMEOUT: 30000 // タイムアウト（ミリ秒）
+const DEFAULT_USI_CONFIG = {
+    SERVER_URL: 'http://localhost:8080',
+    TIMEOUT: 30000
 };
+
+// Ollama設定（動的に読み込まれる）
+export let OLLAMA_CONFIG = { ...DEFAULT_OLLAMA_CONFIG };
+
+// USI設定（動的に読み込まれる）
+export let USI_CONFIG = { ...DEFAULT_USI_CONFIG };
+
+/**
+ * コンフィグを初期化（非同期）
+ * @returns {Promise<void>}
+ */
+export async function initializeConfig() {
+    try {
+        const config = await loadConfig();
+        OLLAMA_CONFIG = {
+            ENDPOINT: config.ollama.endpoint,
+            MODEL: config.ollama.model,
+            TIMEOUT: config.ollama.timeout
+        };
+        USI_CONFIG = {
+            SERVER_URL: config.usi.serverUrl,
+            TIMEOUT: config.usi.timeout
+        };
+    } catch (error) {
+        console.warn('Failed to initialize config, using defaults:', error);
+        OLLAMA_CONFIG = { ...DEFAULT_OLLAMA_CONFIG };
+        USI_CONFIG = { ...DEFAULT_USI_CONFIG };
+    }
+}
+
+/**
+ * コンフィグを取得（同期、既に読み込まれている場合のみ）
+ * @returns {Object} 設定オブジェクト
+ */
+export function getOllamaConfig() {
+    const config = getConfig();
+    return {
+        ENDPOINT: config.ollama.endpoint,
+        MODEL: config.ollama.model,
+        TIMEOUT: config.ollama.timeout
+    };
+}
+
+export function getUSIConfig() {
+    const config = getConfig();
+    return {
+        SERVER_URL: config.usi.serverUrl,
+        TIMEOUT: config.usi.timeout
+    };
+}
 
 // 駒の種類
 export const PIECE_TYPE = {

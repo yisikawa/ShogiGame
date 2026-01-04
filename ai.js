@@ -9,7 +9,9 @@ import {
     ENEMY_TERRITORY_SENTE,
     ENEMY_TERRITORY_GOTE,
     OLLAMA_CONFIG,
-    USI_CONFIG
+    USI_CONFIG,
+    getOllamaConfig,
+    getUSIConfig
 } from './constants.js';
 import { USIClient } from './usi.js';
 
@@ -25,16 +27,20 @@ export class ShogiAI {
     }
 
     configureOllama(ollamaEndpoint, ollamaModel) {
-        const endpoint = ollamaEndpoint ?? OLLAMA_CONFIG.ENDPOINT;
+        // コンフィグから値を取得（動的に読み込まれた値を使用）
+        const config = getOllamaConfig();
+        const endpoint = ollamaEndpoint ?? config.ENDPOINT;
         this.ollamaEndpoint = (endpoint || '').replace(/\/$/, '');
-        this.ollamaModel = ollamaModel ?? OLLAMA_CONFIG.MODEL;
-        this.timeoutMs = OLLAMA_CONFIG.TIMEOUT ?? 30000;
+        this.ollamaModel = ollamaModel ?? config.MODEL;
+        this.timeoutMs = config.TIMEOUT ?? 30000;
     }
 
     configureUSI(usiServerUrl) {
-        const serverUrl = usiServerUrl ?? USI_CONFIG.SERVER_URL;
+        // コンフィグから値を取得（動的に読み込まれた値を使用）
+        const config = getUSIConfig();
+        const serverUrl = usiServerUrl ?? config.SERVER_URL;
         this.usiClient = this.level === AI_LEVEL.USI ? new USIClient(serverUrl) : null;
-        this.usiTimeout = USI_CONFIG.TIMEOUT ?? 30000;
+        this.usiTimeout = config.TIMEOUT ?? 30000;
         this.usiServerUrl = serverUrl; // サーバーURLを保存（UI更新用）
         this.onEngineNameReceived = null; // エンジン名取得時のコールバック
     }

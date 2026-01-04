@@ -6,8 +6,9 @@ import {
     AI_LEVEL,
     AI_THINKING_TIME,
     UI_UPDATE_DELAY,
-    OLLAMA_CONFIG
+    initializeConfig
 } from './constants.js';
+import { loadConfig } from './config.js';
 import { ShogiBoard } from './board.js';
 import { ShogiRules } from './rules.js';
 import { ShogiUI } from './ui.js';
@@ -515,7 +516,43 @@ export class ShogiGame {
 
 // Start the game
 // Ensure DOM is ready and expose to window for debugging
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    // コンフィグを読み込む
+    try {
+        const config = await loadConfig();
+        
+        // HTMLの初期値を設定
+        const ollamaModelSente = document.getElementById('ollamaModelSente');
+        const ollamaModelGote = document.getElementById('ollamaModelGote');
+        const usiServerUrlSente = document.getElementById('usiServerUrlSente');
+        const usiServerUrlGote = document.getElementById('usiServerUrlGote');
+        
+        if (ollamaModelSente) {
+            ollamaModelSente.value = config.ollama.model;
+            ollamaModelSente.placeholder = config.ollama.model;
+        }
+        if (ollamaModelGote) {
+            ollamaModelGote.value = config.ollama.model;
+            ollamaModelGote.placeholder = config.ollama.model;
+        }
+        if (usiServerUrlSente) {
+            usiServerUrlSente.value = config.usi.serverUrl;
+            usiServerUrlSente.placeholder = config.usi.serverUrl;
+        }
+        if (usiServerUrlGote) {
+            usiServerUrlGote.value = config.usi.serverUrl;
+            usiServerUrlGote.placeholder = config.usi.serverUrl;
+        }
+        
+        // コンフィグを初期化
+        await initializeConfig();
+    } catch (error) {
+        console.error('Failed to load config:', error);
+        // エラーが発生してもデフォルト値で続行
+        await initializeConfig();
+    }
+    
+    // ゲームを初期化
     if (!window.game) {
         window.game = new ShogiGame();
         // start() is not a method, init() is called in constructor which calls reset() setting gameStarted=true
