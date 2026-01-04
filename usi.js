@@ -481,7 +481,8 @@ export class USIClient {
             let emptyCount = 0;
             // 左から右へ（列0から列8へ -> 筋9から筋1へ）
             for (let col = 0; col < BOARD_SIZE; col++) {
-                const piece = game.board[row][col];
+                // FIX: Use getPiece instead of direct array access
+                const piece = game.board.getPiece(row, col);
                 if (!piece) {
                     emptyCount++;
                 } else {
@@ -510,8 +511,11 @@ export class USIClient {
 
         // 持ち駒（先手、後手の順）
         // USIプロトコルでは、両方の持ち駒を必ず指定する必要がある
-        const senteHand = this.formatHand(game.capturedPieces.sente);
-        const goteHand = this.formatHand(game.capturedPieces.gote);
+        // FIX: Use capturedPieces from board
+        const senteCaptured = game.board.capturedPieces ? game.board.capturedPieces.sente : game.capturedPieces.sente;
+        const goteCaptured = game.board.capturedPieces ? game.board.capturedPieces.gote : game.capturedPieces.gote;
+        const senteHand = this.formatHand(senteCaptured);
+        const goteHand = this.formatHand(goteCaptured);
         sfen += ' ' + (senteHand || '-');
         sfen += ' ' + (goteHand || '-'); // 後手の持ち駒も必ず指定
 
@@ -648,54 +652,6 @@ export class USIClient {
             // 手の履歴はSFENに含まれる盤面状態以降の手（つまり0手）とする
             // SFENで現在の盤面を完全表現するため、履歴は不要
             const usiMoves = [];
-            /*
-            if (game.moveHistory && game.moveHistory.length > 0) {
-                 // ... (既存の履歴変換コードはコメントアウト)
-            }
-            */
-
-            /*
-            if (game.moveHistory && game.moveHistory.length > 0) {
-                for (let i = 0; i < game.moveHistory.length; i++) {
-                    const move = game.moveHistory[i];
-                    // moveHistoryの各手にはturn情報が含まれている
-                    const moveTurn = move.turn || 'sente'; // デフォルトは先手
-                    const usiMove = this.moveToUSI(move, moveTurn);
-                    if (usiMove) {
-                        usiMoves.push(usiMove);
-                        // デバッグ: 変換結果を確認
-                        this.debugLog('info', `moveHistory[${i}] → USI変換`, {
-                            moveIndex: i,
-                            move: {
-                                type: move.type,
-                                fromRow: move.fromRow,
-                                fromCol: move.fromCol,
-                                toRow: move.toRow,
-                                toCol: move.toCol,
-                                piece: move.piece,
-                                turn: moveTurn,
-                                promoted: move.promoted
-                            },
-                            usiMove: usiMove,
-                            // 座標変換の詳細
-                            coordinateConversion: {
-                                fromUsiCol: 9 - move.fromCol,
-                                fromUsiRow: 8 - move.fromRow,
-                                toUsiCol: 9 - move.toCol,
-                                toUsiRow: 8 - move.toRow,
-                                fromRowChar: String.fromCharCode('a'.charCodeAt(0) + (8 - move.fromRow)),
-                                toRowChar: String.fromCharCode('a'.charCodeAt(0) + (8 - move.toRow))
-                            }
-                        });
-                    } else {
-                        this.debugLog('warn', `moveHistory[${i}]のUSI変換に失敗`, {
-                            moveIndex: i,
-                            move: move
-                        });
-                    }
-                }
-            }
-            */
 
             this.debugLog('info', '局面設定リクエスト送信', {
                 sfen: currentSfen,
@@ -1318,7 +1274,8 @@ export class USIClient {
             const toRow = toUsiRow; // USI段a(0)→内部行0, USI段i(8)→内部行8
 
             // 移動元の駒が存在し、正しい手番の駒かどうかを検証
-            const piece = game.board[fromRow] && game.board[fromRow][fromCol];
+            // FIX: Use getPiece instead of direct array access
+            const piece = game.board.getPiece(fromRow, fromCol);
             if (!piece) {
                 this.debugLog('error', '移動元に駒が存在しません', {
                     usiMove: usiMove,

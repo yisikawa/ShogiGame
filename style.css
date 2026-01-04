@@ -254,13 +254,16 @@ h1 {
 /* 先手と後手の設定行 */
 .ai-settings-row {
     display: flex !important;
-    flex-wrap: wrap;
+    flex-wrap: nowrap !important;
+    white-space: nowrap;
     align-items: center;
     gap: 10px;
     padding: 8px;
     background: #f8f9fa !important;
     border-radius: 5px;
     border: 1px solid #e0e0e0;
+    overflow-x: auto;
+    /* Add horizontal scroll if screen is too small */
 }
 
 .ai-settings-sente {
@@ -385,7 +388,8 @@ h1 {
     font-size: 1em;
     background: white;
     transition: border-color 0.3s;
-    min-width: 250px;
+    min-width: 150px;
+    /* Reduced from 250px */
     flex: 1;
 }
 
@@ -396,7 +400,8 @@ h1 {
     font-size: 1em;
     background: #f5f5f5;
     color: #666;
-    min-width: 200px;
+    min-width: 120px;
+    /* Reduced from 200px */
     flex: 1;
     cursor: default;
 }
@@ -426,9 +431,12 @@ h1 {
 }
 
 @keyframes pulse {
-    0%, 100% {
+
+    0%,
+    100% {
         opacity: 1;
     }
+
     50% {
         opacity: 0.7;
     }
@@ -748,22 +756,22 @@ h1 {
     .game-board-container {
         flex-direction: column;
     }
-    
+
     .board {
         width: 360px;
         height: 360px;
     }
-    
+
     .captured-pieces {
         width: 360px;
         min-height: 60px;
         flex-direction: row;
     }
-    
+
     .captured-list {
         flex-direction: row;
     }
-    
+
     .piece {
         font-size: 18px;
     }
@@ -796,4 +804,3 @@ h1 {
 .usi-config input:hover {
     border-color: #667eea;
 }
-
