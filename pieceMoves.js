@@ -3,31 +3,33 @@
 import { BOARD_SIZE } from './constants.js';
 
 /**
- * 駒の移動ロジックを提供するクラス
+ * 駒の移動ロジックを提供するクラス (Stateless)
  */
 export class PieceMoves {
-    constructor(board, isValidPosition, isSente, isGote) {
-        this.board = board;
-        this.isValidPosition = isValidPosition;
-        this.isSente = isSente;
-        this.isGote = isGote;
+
+    static isSente(piece) {
+        return piece && piece === piece.toUpperCase();
+    }
+
+    static isGote(piece) {
+        return piece && piece === piece.toLowerCase();
     }
 
     /**
      * 王の移動可能な位置を取得
      */
-    getKingMoves(row, col) {
+    static getKingMoves(board, row, col) {
         const moves = [];
         const directions = [
             [-1, -1], [-1, 0], [-1, 1],
-            [0, -1],           [0, 1],
-            [1, -1],  [1, 0],  [1, 1]
+            [0, -1], [0, 1],
+            [1, -1], [1, 0], [1, 1]
         ];
-        
+
         for (const [dr, dc] of directions) {
             const newRow = row + dr;
             const newCol = col + dc;
-            if (this.isValidPosition(newRow, newCol)) {
+            if (board.isValidPosition(newRow, newCol)) {
                 moves.push([newRow, newCol]);
             }
         }
@@ -37,17 +39,17 @@ export class PieceMoves {
     /**
      * 金の移動可能な位置を取得
      */
-    getGoldMoves(row, col, piece) {
+    static getGoldMoves(board, row, col, piece) {
         const moves = [];
         const isSente = this.isSente(piece);
-        const directions = isSente 
+        const directions = isSente
             ? [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, 0]]
             : [[1, -1], [1, 0], [1, 1], [0, -1], [0, 1], [-1, 0]];
-        
+
         for (const [dr, dc] of directions) {
             const newRow = row + dr;
             const newCol = col + dc;
-            if (this.isValidPosition(newRow, newCol)) {
+            if (board.isValidPosition(newRow, newCol)) {
                 moves.push([newRow, newCol]);
             }
         }
@@ -57,12 +59,12 @@ export class PieceMoves {
     /**
      * 銀の移動可能な位置を取得
      */
-    getSilverMoves(row, col, piece) {
+    static getSilverMoves(board, row, col, piece) {
         const isPromoted = piece.includes('+');
         if (isPromoted) {
-            return this.getGoldMoves(row, col, piece);
+            return this.getGoldMoves(board, row, col, piece);
         }
-        
+
         const moves = [];
         const isSente = this.isSente(piece);
         const forward = isSente ? -1 : 1;
@@ -70,11 +72,11 @@ export class PieceMoves {
             [forward, -1], [forward, 0], [forward, 1],
             [-forward, -1], [-forward, 1]
         ];
-        
+
         for (const [dr, dc] of directions) {
             const newRow = row + dr;
             const newCol = col + dc;
-            if (this.isValidPosition(newRow, newCol)) {
+            if (board.isValidPosition(newRow, newCol)) {
                 moves.push([newRow, newCol]);
             }
         }
@@ -84,21 +86,21 @@ export class PieceMoves {
     /**
      * 桂馬の移動可能な位置を取得
      */
-    getKnightMoves(row, col, piece) {
+    static getKnightMoves(board, row, col, piece) {
         const isPromoted = piece.includes('+');
         if (isPromoted) {
-            return this.getGoldMoves(row, col, piece);
+            return this.getGoldMoves(board, row, col, piece);
         }
-        
+
         const moves = [];
         const isSente = this.isSente(piece);
         const forward = isSente ? -2 : 2;
         const directions = [[forward, -1], [forward, 1]];
-        
+
         for (const [dr, dc] of directions) {
             const newRow = row + dr;
             const newCol = col + dc;
-            if (this.isValidPosition(newRow, newCol)) {
+            if (board.isValidPosition(newRow, newCol)) {
                 moves.push([newRow, newCol]);
             }
         }
@@ -108,35 +110,32 @@ export class PieceMoves {
     /**
      * 香車の移動可能な位置を取得
      */
-    getLanceMoves(row, col, piece) {
+    static getLanceMoves(board, row, col, piece) {
         const isPromoted = piece.includes('+');
         if (isPromoted) {
-            return this.getGoldMoves(row, col, piece);
+            return this.getGoldMoves(board, row, col, piece);
         }
-        
+
         const moves = [];
         const isSente = this.isSente(piece);
         const forward = isSente ? -1 : 1;
-        
+
         for (let i = 1; i < BOARD_SIZE; i++) {
             const newRow = row + (forward * i);
-            if (!this.isValidPosition(newRow, col)) break;
-            
-            const target = this.board[newRow][col];
+            if (!board.isValidPosition(newRow, col)) break;
+
+            const target = board.getPiece(newRow, col);
             if (target) {
                 // 駒がある場合
                 const isSameSide = (this.isSente(piece) && this.isSente(target)) ||
-                                   (this.isGote(piece) && this.isGote(target));
+                    (this.isGote(piece) && this.isGote(target));
                 if (isSameSide) {
-                    // 自駒ならそこは進めず、その直前でブロック（何も追加しない）
                     break;
                 } else {
-                    // 相手駒なら取れるマスとして追加してブロック
                     moves.push([newRow, col]);
                     break;
                 }
             } else {
-                // 空のマスなら追加して続行
                 moves.push([newRow, col]);
             }
         }
@@ -146,24 +145,23 @@ export class PieceMoves {
     /**
      * 角の移動可能な位置を取得
      */
-    getBishopMoves(row, col, piece) {
+    static getBishopMoves(board, row, col, piece) {
         const isPromoted = piece.includes('+');
         const moves = [];
         const directions = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
-        
+
         for (const [dr, dc] of directions) {
             for (let i = 1; i < BOARD_SIZE; i++) {
                 const newRow = row + (dr * i);
                 const newCol = col + (dc * i);
-                if (!this.isValidPosition(newRow, newCol)) break;
+                if (!board.isValidPosition(newRow, newCol)) break;
                 moves.push([newRow, newCol]);
-                if (this.board[newRow][newCol]) break;
+                if (board.getPiece(newRow, newCol)) break;
             }
         }
-        
-        // 成り角（馬）は王の動きも追加
+
         if (isPromoted) {
-            const kingMoves = this.getKingMoves(row, col);
+            const kingMoves = this.getKingMoves(board, row, col);
             moves.push(...kingMoves);
         }
         return moves;
@@ -172,24 +170,23 @@ export class PieceMoves {
     /**
      * 飛車の移動可能な位置を取得
      */
-    getRookMoves(row, col, piece) {
+    static getRookMoves(board, row, col, piece) {
         const isPromoted = piece.includes('+');
         const moves = [];
         const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
-        
+
         for (const [dr, dc] of directions) {
             for (let i = 1; i < BOARD_SIZE; i++) {
                 const newRow = row + (dr * i);
                 const newCol = col + (dc * i);
-                if (!this.isValidPosition(newRow, newCol)) break;
+                if (!board.isValidPosition(newRow, newCol)) break;
                 moves.push([newRow, newCol]);
-                if (this.board[newRow][newCol]) break;
+                if (board.getPiece(newRow, newCol)) break;
             }
         }
-        
-        // 成り飛（龍）は王の動きも追加
+
         if (isPromoted) {
-            const kingMoves = this.getKingMoves(row, col);
+            const kingMoves = this.getKingMoves(board, row, col);
             moves.push(...kingMoves);
         }
         return moves;
@@ -198,18 +195,18 @@ export class PieceMoves {
     /**
      * 歩の移動可能な位置を取得
      */
-    getPawnMoves(row, col, piece) {
+    static getPawnMoves(board, row, col, piece) {
         const isPromoted = piece.includes('+');
         if (isPromoted) {
-            return this.getGoldMoves(row, col, piece);
+            return this.getGoldMoves(board, row, col, piece);
         }
-        
+
         const moves = [];
         const isSente = this.isSente(piece);
         const forward = isSente ? -1 : 1;
         const newRow = row + forward;
-        
-        if (this.isValidPosition(newRow, col)) {
+
+        if (board.isValidPosition(newRow, col)) {
             moves.push([newRow, col]);
         }
         return moves;
@@ -218,18 +215,18 @@ export class PieceMoves {
     /**
      * 指定された駒の移動可能な位置を取得
      */
-    getMovesForPiece(row, col, piece) {
+    static getMovesForPiece(board, row, col, piece) {
         const pieceType = piece.replace('+', '').toLowerCase();
-        
+
         switch (pieceType) {
-            case 'k': return this.getKingMoves(row, col);
-            case 'g': return this.getGoldMoves(row, col, piece);
-            case 's': return this.getSilverMoves(row, col, piece);
-            case 'n': return this.getKnightMoves(row, col, piece);
-            case 'l': return this.getLanceMoves(row, col, piece);
-            case 'b': return this.getBishopMoves(row, col, piece);
-            case 'r': return this.getRookMoves(row, col, piece);
-            case 'p': return this.getPawnMoves(row, col, piece);
+            case 'k': return this.getKingMoves(board, row, col);
+            case 'g': return this.getGoldMoves(board, row, col, piece);
+            case 's': return this.getSilverMoves(board, row, col, piece);
+            case 'n': return this.getKnightMoves(board, row, col, piece);
+            case 'l': return this.getLanceMoves(board, row, col, piece);
+            case 'b': return this.getBishopMoves(board, row, col, piece);
+            case 'r': return this.getRookMoves(board, row, col, piece);
+            case 'p': return this.getPawnMoves(board, row, col, piece);
             default: return [];
         }
     }
