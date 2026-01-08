@@ -16,10 +16,25 @@ export class PieceMoves {
     }
 
     /**
+     * 指定された位置に移動可能か判定（盤面内かつ味方の駒がない）
+     */
+    static canMoveTo(board, row, col, piece) {
+        if (!board.isValidPosition(row, col)) return false;
+        const target = board.getPiece(row, col);
+        if (!target) return true;
+
+        // 味方の駒なら移動不可
+        const isSente = this.isSente(piece);
+        const isTargetSente = this.isSente(target);
+        return isSente !== isTargetSente;
+    }
+
+    /**
      * 王の移動可能な位置を取得
      */
     static getKingMoves(board, row, col) {
         const moves = [];
+        const piece = board.getPiece(row, col); // Need piece to check side
         const directions = [
             [-1, -1], [-1, 0], [-1, 1],
             [0, -1], [0, 1],
@@ -29,7 +44,7 @@ export class PieceMoves {
         for (const [dr, dc] of directions) {
             const newRow = row + dr;
             const newCol = col + dc;
-            if (board.isValidPosition(newRow, newCol)) {
+            if (this.canMoveTo(board, newRow, newCol, piece)) {
                 moves.push([newRow, newCol]);
             }
         }
@@ -49,7 +64,7 @@ export class PieceMoves {
         for (const [dr, dc] of directions) {
             const newRow = row + dr;
             const newCol = col + dc;
-            if (board.isValidPosition(newRow, newCol)) {
+            if (this.canMoveTo(board, newRow, newCol, piece)) {
                 moves.push([newRow, newCol]);
             }
         }
@@ -76,7 +91,7 @@ export class PieceMoves {
         for (const [dr, dc] of directions) {
             const newRow = row + dr;
             const newCol = col + dc;
-            if (board.isValidPosition(newRow, newCol)) {
+            if (this.canMoveTo(board, newRow, newCol, piece)) {
                 moves.push([newRow, newCol]);
             }
         }
@@ -100,7 +115,7 @@ export class PieceMoves {
         for (const [dr, dc] of directions) {
             const newRow = row + dr;
             const newCol = col + dc;
-            if (board.isValidPosition(newRow, newCol)) {
+            if (this.canMoveTo(board, newRow, newCol, piece)) {
                 moves.push([newRow, newCol]);
             }
         }
@@ -124,20 +139,10 @@ export class PieceMoves {
             const newRow = row + (forward * i);
             if (!board.isValidPosition(newRow, col)) break;
 
-            const target = board.getPiece(newRow, col);
-            if (target) {
-                // 駒がある場合
-                const isSameSide = (this.isSente(piece) && this.isSente(target)) ||
-                    (this.isGote(piece) && this.isGote(target));
-                if (isSameSide) {
-                    break;
-                } else {
-                    moves.push([newRow, col]);
-                    break;
-                }
-            } else {
+            if (this.canMoveTo(board, newRow, col, piece)) {
                 moves.push([newRow, col]);
             }
+            if (board.getPiece(newRow, col)) break;
         }
         return moves;
     }
@@ -155,7 +160,10 @@ export class PieceMoves {
                 const newRow = row + (dr * i);
                 const newCol = col + (dc * i);
                 if (!board.isValidPosition(newRow, newCol)) break;
-                moves.push([newRow, newCol]);
+
+                if (this.canMoveTo(board, newRow, newCol, piece)) {
+                    moves.push([newRow, newCol]);
+                }
                 if (board.getPiece(newRow, newCol)) break;
             }
         }
@@ -180,7 +188,10 @@ export class PieceMoves {
                 const newRow = row + (dr * i);
                 const newCol = col + (dc * i);
                 if (!board.isValidPosition(newRow, newCol)) break;
-                moves.push([newRow, newCol]);
+
+                if (this.canMoveTo(board, newRow, newCol, piece)) {
+                    moves.push([newRow, newCol]);
+                }
                 if (board.getPiece(newRow, newCol)) break;
             }
         }
@@ -206,7 +217,7 @@ export class PieceMoves {
         const forward = isSente ? -1 : 1;
         const newRow = row + forward;
 
-        if (board.isValidPosition(newRow, col)) {
+        if (this.canMoveTo(board, newRow, col, piece)) {
             moves.push([newRow, col]);
         }
         return moves;

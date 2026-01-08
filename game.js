@@ -53,7 +53,34 @@ export class ShogiGame {
     }
 
     init() {
+        this.setupUIListeners();
         this.reset();
+    }
+
+    setupUIListeners() {
+        const c = this.ui.container;
+
+        c.addEventListener('cell-click', (e) => this.handleCellClick(e.detail.row, e.detail.col));
+        c.addEventListener('captured-click', (e) => this.handleCapturedPieceClick(e.detail.piece, e.detail.player));
+
+        c.addEventListener('game-reset', () => this.reset());
+
+        c.addEventListener('config-change', (e) => this.handleConfigChange(e.detail));
+
+        c.addEventListener('new-game', () => {
+            this.exitReplayMode();
+            this.reset();
+        });
+
+        c.addEventListener('exit-game', () => this.exitGame());
+
+        c.addEventListener('promote-response', (e) => this.handlePromotionChoice(e.detail.promote));
+
+        c.addEventListener('history-nav', (e) => this.handleHistoryNav(e.detail.direction));
+
+        c.addEventListener('load-kifu', (e) => {
+            this.loadKifu(e.detail);
+        });
     }
 
     reset() {
@@ -69,7 +96,7 @@ export class ShogiGame {
         };
 
         this.currentTurn = PLAYER.SENTE;
-        this.selectedCell = null;
+        this.selectedCell = null; // {row, col}
         this.selectedCapturedPiece = null;
         this.pendingPromotion = null;
         this.gameOver = false;
@@ -123,7 +150,7 @@ export class ShogiGame {
         const isMyPiece = piece && this.rules.isPlayerPiece(piece, this.currentTurn);
 
         if (isMyPiece) {
-            this.selectedCell = [row, col];
+            this.selectedCell = { row, col };
             this.selectedCapturedPiece = null;
             const possibleMoves = this.rules.getPossibleMoves(row, col, this.currentTurn);
             this.ui.highlightMoves(possibleMoves, this.selectedCell);
@@ -131,8 +158,9 @@ export class ShogiGame {
         }
 
         if (this.selectedCell) {
-            const [fromRow, fromCol] = this.selectedCell;
+            const { row: fromRow, col: fromCol } = this.selectedCell;
             const possibleMoves = this.rules.getPossibleMoves(fromRow, fromCol, this.currentTurn);
+            // moves are arrays [r, c] from rules.
             const canMove = possibleMoves.some(([r, c]) => r === row && c === col);
 
             if (canMove) {
@@ -178,25 +206,48 @@ export class ShogiGame {
     }
 
     // --- AI Config Handlers ---
+
+    handleConfigChange(data) {
+        const { player, key, value } = data;
+
+        if (key === 'aiLevel') {
+            this.handleAILevelChange(player, value);
+        } else if (key === 'ollamaModel') {
+            this.handleOllamaModelChange(player, value);
+        } else if (key === 'usiUrl') {
+            this.handleUSIUrlChange(player, value);
+        }
+    }
+
+    handleHistoryNav(direction) {
+        switch (direction) {
+            case 'prev': this.goToPreviousMove(); break;
+            case 'next': this.goToNextMove(); break;
+            case 'first': this.goToFirstMove(); break;
+            case 'last': this.goToLastMove(); break;
+        }
+    }
+
     handleAILevelChange(player, level) {
-        if (player === PLAYER.SENTE) this.aiLevelSente = level;
+        const p = player === 'sente' ? PLAYER.SENTE : PLAYER.GOTE; // Ensure correct const if string passed
+        if (p === PLAYER.SENTE) this.aiLevelSente = level;
         else this.aiLevelGote = level;
 
-        this.ui.updateAIConfigVisibility(player, level);
+        this.ui.updateAIConfigVisibility(p, level);
 
-        if (player === PLAYER.SENTE) this.aiSente = this.createAI(PLAYER.SENTE);
+        if (p === PLAYER.SENTE) this.aiSente = this.createAI(PLAYER.SENTE);
         else this.aiGote = this.createAI(PLAYER.GOTE);
     }
 
     handleOllamaModelChange(player, value) {
-        // Just recreate AI with new config
-        if (player === PLAYER.SENTE) this.aiSente = this.createAI(PLAYER.SENTE);
+        const p = player === 'sente' ? PLAYER.SENTE : PLAYER.GOTE;
+        if (p === PLAYER.SENTE) this.aiSente = this.createAI(PLAYER.SENTE);
         else this.aiGote = this.createAI(PLAYER.GOTE);
     }
 
     handleUSIUrlChange(player, value) {
-        // Just recreate AI with new config, logic handles fetching from UI
-        if (player === PLAYER.SENTE) this.aiSente = this.createAI(PLAYER.SENTE);
+        const p = player === 'sente' ? PLAYER.SENTE : PLAYER.GOTE;
+        if (p === PLAYER.SENTE) this.aiSente = this.createAI(PLAYER.SENTE);
         else this.aiGote = this.createAI(PLAYER.GOTE);
     }
 
@@ -393,11 +444,8 @@ export class ShogiGame {
         setTimeout(async () => {
             try {
                 let move;
-                if (ai.level === AI_LEVEL.OLLAMA || ai.level === AI_LEVEL.USI) {
-                    move = await ai.getBestMoveAsync(this, turn);
-                } else {
-                    move = ai.getBestMove(this, turn);
-                }
+                // すべてのAIレベルでWorkerを使用するため非同期呼び出し
+                move = await ai.getBestMoveAsync(this, turn);
 
                 if (move) {
                     if (move.type === 'move') {
@@ -520,13 +568,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     // コンフィグを読み込む
     try {
         const config = await loadConfig();
-        
+
         // HTMLの初期値を設定
         const ollamaModelSente = document.getElementById('ollamaModelSente');
         const ollamaModelGote = document.getElementById('ollamaModelGote');
         const usiServerUrlSente = document.getElementById('usiServerUrlSente');
         const usiServerUrlGote = document.getElementById('usiServerUrlGote');
-        
+
         if (ollamaModelSente) {
             ollamaModelSente.value = config.ollama.model;
             ollamaModelSente.placeholder = config.ollama.model;
@@ -543,7 +591,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             usiServerUrlGote.value = config.usi.serverUrl;
             usiServerUrlGote.placeholder = config.usi.serverUrl;
         }
-        
+
         // コンフィグを初期化
         await initializeConfig();
     } catch (error) {
@@ -551,7 +599,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // エラーが発生してもデフォルト値で続行
         await initializeConfig();
     }
-    
+
     // ゲームを初期化
     if (!window.game) {
         window.game = new ShogiGame();

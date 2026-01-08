@@ -204,37 +204,33 @@ export class ShogiRules {
     // --- Check and Safety Logic ---
 
     isMoveSafe(move, turn) {
-        const originalBoard = this.board.clone();
+        // Prepare move for simulation (handling forced promotion logic)
+        let simulatePromote = move.promote;
 
-        // Simulate move on current board (temporarily) - actually we should clone board to test
-        // But since we have a clone method, let's use a temp board for safety check
-        // However, this.board is used by all methods. 
-        // Better: Clone board, swap global usage, check, swap back? No, unstable.
-        // Best: Pass board to isInCheck.
-
-        // We will simulate on a CLONED data structure, but we need to pass that clone to isInCheck.
-        // So isInCheck needs to accept a board argument.
-
-        const simulationBoard = this.board.clone();
-
-        // Apply move to simulationBoard
-        if (move.type === 'move') {
-            const piece = simulationBoard.getPiece(move.fromRow, move.fromCol);
-            simulationBoard.setPiece(move.fromRow, move.fromCol, null);
-
-            const promote = move.promote || (this.canPromote(piece, move.fromRow, move.toRow) && this.mustPromote(piece, move.toRow));
-            const finalPiece = promote ? '+' + piece : piece;
-
-            simulationBoard.setPiece(move.toRow, move.toCol, finalPiece);
-        } else {
-            // Drop
-            const piece = move.piece; // plain string 'P', 'S' etc
-            // Adjust case for owner
-            const actualPiece = turn === PLAYER.SENTE ? piece.toUpperCase() : piece.toLowerCase();
-            simulationBoard.setPiece(move.toRow, move.toCol, actualPiece);
+        if (move.type === 'move' && !simulatePromote) {
+            // Check if this move forces promotion (even if not explicitly requested in move obj)
+            // This handles cases like getPossibleMoves which creates simple moves without promote flag
+            // content of piece must be retrieved from board before applyMove
+            const piece = this.board.getPiece(move.fromRow, move.fromCol);
+            // piece check is safety, though fromRow/Col should be valid
+            if (piece && this.canPromote(piece, move.fromRow, move.toRow) && this.mustPromote(piece, move.toRow)) {
+                simulatePromote = true;
+            }
         }
 
-        return !this.isInCheck(turn, simulationBoard);
+        const moveForSimulation = { ...move, promote: simulatePromote };
+
+        // Apply move locally
+        const undoInfo = this.board.applyMove(moveForSimulation, turn);
+
+        // Check safety
+        // isInCheck uses this.board by default
+        const safe = !this.isInCheck(turn);
+
+        // Revert move
+        this.board.undoMove(moveForSimulation, undoInfo, turn);
+
+        return safe;
     }
 
     isInCheck(player, boardToTest = null) {

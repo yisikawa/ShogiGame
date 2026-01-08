@@ -24,6 +24,28 @@ export class ShogiAI {
         this.pieceValues = PIECE_VALUES;
         this.configureOllama(ollamaEndpoint, ollamaModel);
         this.configureUSI(usiServerUrl);
+
+        // Initialize Worker
+        try {
+            this.worker = new Worker('ai-worker.js', { type: 'module' });
+            this.worker.onmessage = this.handleWorkerMessage.bind(this);
+            this.pendingRequest = null;
+        } catch (e) {
+            console.error('Failed to initialize AI Worker:', e);
+        }
+    }
+
+    handleWorkerMessage(e) {
+        if (!this.pendingRequest) return;
+
+        const { type, move, error } = e.data;
+        if (type === 'success') {
+            this.pendingRequest.resolve(move);
+        } else {
+            console.error('AI Worker Error:', error);
+            this.pendingRequest.reject(new Error(error));
+        }
+        this.pendingRequest = null;
     }
 
     configureOllama(ollamaEndpoint, ollamaModel) {
@@ -47,7 +69,6 @@ export class ShogiAI {
 
     /**
      * エンジン名取得時のコールバックを設定
-     * @param {Function} callback - エンジン名と作者を受け取るコールバック (engineName, engineAuthor) => void
      */
     setEngineNameCallback(callback) {
         this.onEngineNameReceived = callback;
@@ -57,379 +78,7 @@ export class ShogiAI {
     }
 
     /**
-     * 最善手を取得
-     */
-    getBestMove(game, turn) {
-        const allMoves = game.getAllPossibleMoves(turn);
-        if (allMoves.length === 0) return null;
-
-        switch (this.level) {
-            case AI_LEVEL.BEGINNER:
-                return this.getBeginnerMove(allMoves, game, turn);
-            case AI_LEVEL.INTERMEDIATE:
-                return this.getIntermediateMove(allMoves, game, turn);
-            case AI_LEVEL.ADVANCED:
-                return this.getAdvancedMove(allMoves, game, turn);
-            case AI_LEVEL.OLLAMA:
-                // Ollamaは非同期なので、getBestMoveAsync()を使用する必要があります
-                throw new Error('Ollamaは非同期AIです。getBestMoveAsync()を使用してください。');
-            case AI_LEVEL.USI:
-                // USIは非同期なので、getBestMoveAsync()を使用する必要があります
-                throw new Error('USIは非同期AIです。getBestMoveAsync()を使用してください。');
-            default:
-                return this.getIntermediateMove(allMoves, game, turn);
-        }
-    }
-
-    /**
-     * 初級AI: ランダムまたは簡単な評価
-     */
-    getBeginnerMove(allMoves, game, turn) {
-        const RANDOM_THRESHOLD = 0.5;
-
-        // 50%の確率でランダム、50%で簡単な評価
-        if (Math.random() < RANDOM_THRESHOLD) {
-            return this.getRandomMove(allMoves);
-        }
-
-        // 簡単な評価：取れる駒がある場合は優先
-        return this.getBestCaptureMove(allMoves, game) || this.getRandomMove(allMoves);
-    }
-
-    /**
-     * ランダムな手を取得
-     */
-    getRandomMove(allMoves) {
-        if (allMoves.length === 0) return null;
-        const randomIndex = Math.floor(Math.random() * allMoves.length);
-        return allMoves[randomIndex];
-    }
-
-    /**
-     * 取れる駒がある手を優先的に取得
-     */
-    getBestCaptureMove(allMoves, game) {
-        let bestMove = null;
-        let bestScore = -Infinity;
-
-        for (const move of allMoves) {
-            if (move.type !== 'move') continue;
-
-            const targetPiece = game.board.getPiece(move.toRow, move.toCol);
-            if (!targetPiece) continue;
-
-            const pieceType = targetPiece.replace('+', '').toLowerCase();
-            const score = this.pieceValues[pieceType] || 0;
-
-            if (score > bestScore) {
-                bestScore = score;
-                bestMove = move;
-            }
-        }
-
-        return bestMove;
-    }
-
-    /**
-     * 中級AI: 基本的な評価関数
-     */
-    getIntermediateMove(allMoves, game, turn) {
-        if (allMoves.length === 0) return null;
-
-        return this.selectBestMove(allMoves, (move) => this.evaluateMove(move, game, turn));
-    }
-
-    /**
-     * 評価関数に基づいて最善手を選択
-     */
-    selectBestMove(allMoves, evaluateFn) {
-        let bestMove = null;
-        let bestScore = -Infinity;
-
-        for (const move of allMoves) {
-            const score = evaluateFn(move);
-            if (score > bestScore) {
-                bestScore = score;
-                bestMove = move;
-            }
-        }
-
-        return bestMove || allMoves[0];
-    }
-
-    /**
-     * 上級AI: ミニマックス法（簡易版）
-     */
-    getAdvancedMove(allMoves, game, turn) {
-        let bestMove = null;
-        let bestScore = -Infinity;
-
-        for (const move of allMoves) {
-            // 仮想的に手を打つ
-            const gameCopy = this.cloneGame(game);
-            this.makeMove(gameCopy, move, turn);
-
-            // ミニマックス評価（簡易版）
-            const score = this.minimax(
-                gameCopy,
-                MINIMAX_DEPTH - 1,
-                turn === 'sente' ? 'gote' : 'sente',
-                false
-            );
-
-            if (score > bestScore) {
-                bestScore = score;
-                bestMove = move;
-            }
-        }
-
-        return bestMove || this.getIntermediateMove(allMoves, game, turn);
-    }
-
-    /**
-     * 手の評価
-     */
-    evaluateMove(move, game, turn) {
-        if (move.type === 'move') {
-            return this.evaluateMoveMove(move, game, turn);
-        } else if (move.type === 'drop') {
-            return this.evaluateMoveDrop(move, game, turn);
-        }
-        return 0;
-    }
-
-    /**
-     * 移動手の評価
-     */
-    evaluateMoveMove(move, game, turn) {
-        let score = 0;
-        const targetPiece = game.board.getPiece(move.toRow, move.toCol);
-
-        // 取れる駒の価値
-        if (targetPiece) {
-            const pieceType = targetPiece.replace('+', '').toLowerCase();
-            score += this.pieceValues[pieceType] || 0;
-        }
-
-        // 前進を評価
-        const fromPiece = game.board.getPiece(move.fromRow, move.fromCol);
-        if (fromPiece) {
-            const ADVANCE_BONUS = 10;
-            if (turn === 'sente' && move.toRow < move.fromRow) {
-                score += ADVANCE_BONUS;
-            } else if (turn === 'gote' && move.toRow > move.fromRow) {
-                score += ADVANCE_BONUS;
-            }
-        }
-
-        return score;
-    }
-
-    /**
-     * 打ち手の評価
-     */
-    evaluateMoveDrop(move, game, turn) {
-        const DROP_PENALTY_FACTOR = 0.1;
-        const ENEMY_TERRITORY_BONUS = 20;
-
-        let score = 0;
-        const pieceValue = this.pieceValues[move.piece] || 0;
-        score += pieceValue * DROP_PENALTY_FACTOR; // 持ち駒を打つのは少しマイナス評価
-
-        // 敵陣に打つ場合はプラス評価
-        if (turn === 'sente' && move.toRow < ENEMY_TERRITORY_SENTE) {
-            score += ENEMY_TERRITORY_BONUS;
-        } else if (turn === 'gote' && move.toRow > ENEMY_TERRITORY_GOTE) {
-            score += ENEMY_TERRITORY_BONUS;
-        }
-
-        return score;
-    }
-
-    /**
-     * ミニマックス法（簡易版）
-     */
-    minimax(game, depth, turn, isMaximizing) {
-        if (depth === 0) {
-            return this.evaluatePosition(game, turn === 'sente' ? 'gote' : 'sente');
-        }
-
-        const moves = game.getAllPossibleMoves(turn);
-        if (moves.length === 0) {
-            return isMaximizing ? -Infinity : Infinity;
-        }
-
-        if (isMaximizing) {
-            let maxScore = -Infinity;
-            for (const move of moves.slice(0, MINIMAX_MOVE_LIMIT)) {
-                const gameCopy = this.cloneGame(game);
-                this.makeMove(gameCopy, move, turn);
-                const score = this.minimax(
-                    gameCopy,
-                    depth - 1,
-                    turn === 'sente' ? 'gote' : 'sente',
-                    false
-                );
-                maxScore = Math.max(maxScore, score);
-            }
-            return maxScore;
-        } else {
-            let minScore = Infinity;
-            for (const move of moves.slice(0, MINIMAX_MOVE_LIMIT)) {
-                const gameCopy = this.cloneGame(game);
-                this.makeMove(gameCopy, move, turn);
-                const score = this.minimax(
-                    gameCopy,
-                    depth - 1,
-                    turn === 'sente' ? 'gote' : 'sente',
-                    true
-                );
-                minScore = Math.min(minScore, score);
-            }
-            return minScore;
-        }
-    }
-
-    /**
-     * 局面評価
-     */
-    evaluatePosition(game, myTurn) {
-        const CAPTURED_PIECE_FACTOR = 0.8;
-
-        let score = this.evaluateBoardPieces(game, myTurn);
-        score += this.evaluateCapturedPieces(game, myTurn, CAPTURED_PIECE_FACTOR);
-
-        return score;
-    }
-
-    /**
-     * 盤上の駒を評価
-     */
-    evaluateBoardPieces(game, myTurn) {
-        let score = 0;
-
-        for (let row = 0; row < 9; row++) {
-            for (let col = 0; col < 9; col++) {
-                const piece = game.board.getPiece(row, col);
-                if (!piece) continue;
-
-                const pieceType = piece.replace('+', '').toLowerCase();
-                const value = this.pieceValues[pieceType] || 0;
-
-                const isMyPiece = (myTurn === 'sente' && game.isSente(piece)) ||
-                    (myTurn === 'gote' && game.isGote(piece));
-
-                score += isMyPiece ? value : -value;
-            }
-        }
-
-        return score;
-    }
-
-    /**
-     * 持ち駒を評価
-     */
-    evaluateCapturedPieces(game, myTurn, factor) {
-        let score = 0;
-        const opponent = myTurn === 'sente' ? 'gote' : 'sente';
-        const captured = game.board.capturedPieces || game.capturedPieces;
-
-        // 自分の持ち駒
-        captured[myTurn].forEach(piece => {
-            score += (this.pieceValues[piece] || 0) * factor;
-        });
-
-        // 相手の持ち駒（マイナス評価）
-        captured[opponent].forEach(piece => {
-            score -= (this.pieceValues[piece] || 0) * factor;
-        });
-
-        return score;
-    }
-
-    /**
-     * ゲーム状態のクローン（簡易版）
-     */
-    cloneGame(game) {
-        const cloned = Object.create(game);
-
-        // 状態をディープコピー（盤面と持ち駒）
-        if (game.board && typeof game.board.clone === 'function') {
-            cloned.board = game.board.clone();
-        } else {
-            throw new Error('Game board must implement clone() method');
-        }
-
-        cloned.currentTurn = game.currentTurn;
-
-        return cloned;
-    }
-
-    /**
-     * 仮想的に手を打つ
-     */
-    makeMove(game, move, turn) {
-        if (move.type === 'move') {
-            this.makeMoveMove(game, move, turn);
-        } else if (move.type === 'drop') {
-            this.makeMoveDrop(game, move, turn);
-        }
-    }
-
-    /**
-     * 移動手を実行
-     */
-    makeMoveMove(game, move, turn) {
-        const piece = game.board.getPiece(move.fromRow, move.fromCol);
-        const captured = game.board.getPiece(move.toRow, move.toCol);
-
-        // 取った駒を持ち駒に追加
-        if (captured) {
-            const capturedPiece = captured.replace('+', '').toLowerCase();
-            game.board.capturedPieces[turn].push(capturedPiece);
-        }
-
-        // 駒を移動
-        game.board.setPiece(move.toRow, move.toCol, piece);
-        game.board.setPiece(move.fromRow, move.fromCol, null);
-
-        // 成りの判定（AIは基本的に成る）
-        if (this.shouldPromote(piece, move, turn)) {
-            game.board.setPiece(move.toRow, move.toCol, '+' + piece);
-        }
-    }
-
-    /**
-     * 打ち手を実行
-     */
-    makeMoveDrop(game, move, turn) {
-        const pieceType = move.piece.toLowerCase();
-        const droppedPiece = turn === 'sente' ? pieceType.toUpperCase() : pieceType;
-        game.board.setPiece(move.toRow, move.toCol, droppedPiece);
-
-        // 持ち駒から削除
-        const capturedList = game.board.capturedPieces[turn];
-        const index = capturedList.indexOf(pieceType);
-        if (index > -1) {
-            capturedList.splice(index, 1);
-        }
-    }
-
-    /**
-     * 成るべきかどうかを判定
-     */
-    shouldPromote(piece, move, turn) {
-        if (piece.includes('+')) return false; // 既に成っている
-        if (piece.toLowerCase() === 'k' || piece.toLowerCase() === 'g') return false; // 王と金は成れない
-
-        const canPromote = (turn === 'sente' && (move.toRow < ENEMY_TERRITORY_SENTE || move.fromRow < ENEMY_TERRITORY_SENTE)) ||
-            (turn === 'gote' && (move.toRow > ENEMY_TERRITORY_GOTE || move.fromRow > ENEMY_TERRITORY_GOTE));
-
-        return canPromote;
-    }
-
-    /**
-     * 非同期で最善手を取得（Ollama/USI用）
+     * 非同期で最善手を取得（共通インターフェース）
      */
     async getBestMoveAsync(game, turn) {
         const allMoves = game.getAllPossibleMoves(turn);
@@ -440,9 +89,72 @@ export class ShogiAI {
         } else if (this.level === AI_LEVEL.USI) {
             return this.getUSIMove(allMoves, game, turn);
         } else {
-            return this.getBestMove(game, turn);
+            return this.getLocalAIMove(game, turn);
         }
     }
+
+    /**
+     * ローカルAI（Worker）を使用して手を取得
+     */
+    async getLocalAIMove(game, turn) {
+        if (!this.worker) {
+            console.warn('AI Worker not available, falling back to synchronous logic (not implemented)');
+            return null;
+        }
+
+        return new Promise((resolve, reject) => {
+            if (this.pendingRequest) {
+                this.pendingRequest.reject(new Error('New request started'));
+            }
+
+            this.pendingRequest = { resolve, reject };
+
+            const state = {
+                board: game.board.board,
+                capturedPieces: game.board.capturedPieces
+            };
+
+            this.worker.postMessage({
+                type: 'think',
+                state: state,
+                config: {
+                    turn: turn,
+                    level: this.level
+                }
+            });
+        });
+    }
+
+    // Legacy synchronous getBestMove intentionally removed/deprecated.
+    // getBestMove(game, turn) {
+    //     throw new Error('Use getBestMoveAsync');
+    // }
+
+    // ... (Remote AI methods: getUSIMove, getOllamaMove, logMoveStart, logMoveSuccess, etc can remain)
+
+    /**
+     * 手取得開始をログに記録
+     */
+    logMoveStart(type, context) {
+        const playerInfo = context.player ? ` (${context.player})` : '';
+        console.info(`[AI] ${type}最善手取得開始${playerInfo}`, context);
+    }
+
+    /**
+     * 手取得成功をログに記録
+     */
+    logMoveSuccess(type, move, elapsed) {
+        const moveDescription = move.type === 'move'
+            ? `${move.fromRow},${move.fromCol} → ${move.toRow},${move.toCol}`
+            : `${move.piece}打 → ${move.toRow},${move.toCol}`;
+
+        console.info(`[AI] ${type}最善手取得成功`, {
+            move: moveDescription,
+            elapsed: `${elapsed}ms`
+        });
+    }
+
+
 
     /**
      * USIを使用して手を取得
@@ -490,27 +202,7 @@ export class ShogiAI {
         return move;
     }
 
-    /**
-     * 手取得開始をログに記録
-     */
-    logMoveStart(type, context) {
-        const playerInfo = context.player ? ` (${context.player})` : '';
-        console.info(`[AI] ${type}最善手取得開始${playerInfo}`, context);
-    }
 
-    /**
-     * 手取得成功をログに記録
-     */
-    logMoveSuccess(type, move, elapsed) {
-        const moveDescription = move.type === 'move'
-            ? `${move.fromRow},${move.fromCol} → ${move.toRow},${move.toCol}`
-            : `${move.piece}打 → ${move.toRow},${move.toCol}`;
-
-        console.info(`[AI] ${type}最善手取得成功`, {
-            move: moveDescription,
-            elapsed: `${elapsed}ms`
-        });
-    }
 
     /**
      * Ollamaを使用して手を取得

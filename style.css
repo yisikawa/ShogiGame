@@ -512,15 +512,7 @@ h1 {
     min-width: 150px;
 }
 
-.new-game-btn {
-    background: #667eea;
-    color: white;
-}
 
-.new-game-btn:hover {
-    background: #5568d3;
-    transform: scale(1.05);
-}
 
 .exit-game-btn {
     background: #e74c3c;
@@ -649,15 +641,7 @@ h1 {
     transition: all 0.3s;
 }
 
-.new-game-btn {
-    background: #667eea;
-    color: white;
-}
 
-.new-game-btn:hover {
-    background: #5568d3;
-    transform: scale(1.05);
-}
 
 .exit-game-btn {
     background: #e74c3c;

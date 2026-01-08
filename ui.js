@@ -4,7 +4,13 @@ export class ShogiUI {
     constructor(game) {
         this.game = game;
         this.pendingKifuData = null;
+        this.container = document.body; // Event bus target
         this.setupEventListeners();
+    }
+
+    trigger(eventName, detail = {}) {
+        const event = new CustomEvent(eventName, { detail });
+        this.container.dispatchEvent(event);
     }
 
     renderBoard(board) {
@@ -29,7 +35,7 @@ export class ShogiUI {
                     cell.appendChild(pieceElement);
                 }
 
-                cell.addEventListener('click', () => this.game.handleCellClick(row, col));
+                cell.addEventListener('click', () => this.trigger('cell-click', { row, col }));
                 boardElement.appendChild(cell);
             }
         }
@@ -86,7 +92,7 @@ export class ShogiUI {
                 pieceElement.classList.add('selected-captured');
             }
 
-            pieceElement.addEventListener('click', () => this.game.handleCapturedPieceClick(piece, player));
+            pieceElement.addEventListener('click', () => this.trigger('captured-click', { piece, player }));
             container.appendChild(pieceElement);
         });
     }
@@ -97,11 +103,26 @@ export class ShogiUI {
         document.querySelectorAll('.possible-move').forEach(el => el.classList.remove('possible-move'));
 
         if (selectedCell) {
-            const [row, col] = selectedCell;
+            // Handle both object {row, col} and array [row, col] for backward compatibility during refactor
+            const row = selectedCell.row !== undefined ? selectedCell.row : selectedCell[0];
+            const col = selectedCell.col !== undefined ? selectedCell.col : selectedCell[1];
+
             const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
             if (cell) cell.classList.add('selected');
 
-            possibleMoves.forEach(([r, c]) => {
+            possibleMoves.forEach((move) => {
+                // move can be [r, c] (old) or object (new)? 
+                // Rules usually return objects {type, from..., to...} or arrays?
+                // Rules.getPossibleMoves returns array of molecules? No, usually array of moves.
+                // game.handleCellClick calls ui.highlightMoves(possibleMoves, selectedCell).
+                // rules.getPossibleMoves returns array of [row, col].
+                let r, c;
+                if (Array.isArray(move)) {
+                    [r, c] = move;
+                } else {
+                    r = move.toRow;
+                    c = move.toCol;
+                }
                 const moveCell = document.querySelector(`[data-row="${r}"][data-col="${c}"]`);
                 if (moveCell) moveCell.classList.add('possible-move');
             });
@@ -110,7 +131,14 @@ export class ShogiUI {
 
     highlightDropPositions(availableDrops) {
         document.querySelectorAll('.possible-move').forEach(el => el.classList.remove('possible-move'));
-        availableDrops.forEach(([r, c]) => {
+        availableDrops.forEach((pos) => {
+            let r, c;
+            if (Array.isArray(pos)) {
+                [r, c] = pos;
+            } else {
+                r = pos.row;
+                c = pos.col;
+            }
             const cell = document.querySelector(`[data-row="${r}"][data-col="${c}"]`);
             if (cell) cell.classList.add('possible-move');
         });
@@ -179,58 +207,67 @@ export class ShogiUI {
     }
 
     setupEventListeners() {
-        const handlers = {
-            'resetBtn': () => this.game.reset(),
-            'aiLevelSente': (e) => this.game.handleAILevelChange(PLAYER.SENTE, e.target.value),
-            'aiLevelGote': (e) => this.game.handleAILevelChange(PLAYER.GOTE, e.target.value),
-
-            'ollamaModelSente': (e) => this.game.handleOllamaModelChange && this.game.handleOllamaModelChange(PLAYER.SENTE, e.target.value),
-            'ollamaModelGote': (e) => this.game.handleOllamaModelChange && this.game.handleOllamaModelChange(PLAYER.GOTE, e.target.value),
-
-            'usiServerUrlSente': (e) => this.game.handleUSIUrlChange && this.game.handleUSIUrlChange(PLAYER.SENTE, e.target.value),
-            'usiServerUrlGote': (e) => this.game.handleUSIUrlChange && this.game.handleUSIUrlChange(PLAYER.GOTE, e.target.value),
-
-            'newGameBtn': () => {
-                this.game.exitReplayMode();
-                this.game.reset();
-            },
-            'exitGameBtn': () => this.game.exitGame(),
-            'promoteYesBtn': () => this.game.handlePromotionChoice(true),
-            'promoteNoBtn': () => this.game.handlePromotionChoice(false),
-            'prevMoveBtn': () => this.game.goToPreviousMove(),
-            'nextMoveBtn': () => this.game.goToNextMove(),
-            'firstMoveBtn': () => this.game.goToFirstMove(),
-            'lastMoveBtn': () => this.game.goToLastMove(),
-            'downloadKifuBtn': () => this.downloadKifu(this.game.moveHistory),
-            'uploadKifuBtn': () => {
-                const input = document.getElementById('uploadKifuInput');
-                if (input) input.click();
-            },
-            'uploadKifuInput': (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    this.handleKifuFileSelect(file);
-                }
-            },
-            'loadKifuBtn': () => {
-                if (this.pendingKifuData) {
-                    this.game.loadKifu(this.pendingKifuData);
-                    this.hideKifuDataModal();
-                }
-            },
-            'cancelKifuBtn': () => this.hideKifuDataModal()
+        // Helper to bind events
+        const bind = (id, eventType, handler) => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener(eventType, handler);
         };
+        const click = (id, handler) => bind(id, 'click', handler);
+        const change = (id, handler) => bind(id, 'change', handler);
 
-        Object.entries(handlers).forEach(([id, handler]) => {
-            const element = document.getElementById(id);
-            if (element) {
-                let eventType = 'click';
-                if (id.includes('Input') || id.includes('select') || element.tagName === 'SELECT' || element.tagName === 'INPUT') {
-                    eventType = 'change';
+        click('resetBtn', () => {
+            if (this.game.moveHistory.length > 0 && !this.game.gameOver) {
+                if (confirm('現在のゲームを終了して新しく始めますか？')) {
+                    this.trigger('game-reset');
                 }
-                element.addEventListener(eventType, handler);
+            } else {
+                this.trigger('game-reset');
             }
         });
+
+        change('aiLevelSente', (e) => this.trigger('config-change', { player: 'sente', key: 'aiLevel', value: e.target.value }));
+        change('aiLevelGote', (e) => this.trigger('config-change', { player: 'gote', key: 'aiLevel', value: e.target.value }));
+
+        change('ollamaModelSente', (e) => this.trigger('config-change', { player: 'sente', key: 'ollamaModel', value: e.target.value }));
+        change('ollamaModelGote', (e) => this.trigger('config-change', { player: 'gote', key: 'ollamaModel', value: e.target.value }));
+
+        change('usiServerUrlSente', (e) => this.trigger('config-change', { player: 'sente', key: 'usiUrl', value: e.target.value }));
+        change('usiServerUrlGote', (e) => this.trigger('config-change', { player: 'gote', key: 'usiUrl', value: e.target.value }));
+
+
+
+        click('exitGameBtn', () => this.trigger('exit-game'));
+
+        click('promoteYesBtn', () => this.trigger('promote-response', { promote: true }));
+        click('promoteNoBtn', () => this.trigger('promote-response', { promote: false }));
+
+        click('prevMoveBtn', () => this.trigger('history-nav', { direction: 'prev' }));
+        click('nextMoveBtn', () => this.trigger('history-nav', { direction: 'next' }));
+        click('firstMoveBtn', () => this.trigger('history-nav', { direction: 'first' }));
+        click('lastMoveBtn', () => this.trigger('history-nav', { direction: 'last' }));
+
+        click('downloadKifuBtn', () => this.downloadKifu(this.game.moveHistory));
+
+        click('uploadKifuBtn', () => {
+            const input = document.getElementById('uploadKifuInput');
+            if (input) input.click();
+        });
+
+        change('uploadKifuInput', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                this.handleKifuFileSelect(file);
+            }
+        });
+
+        click('loadKifuBtn', () => {
+            if (this.pendingKifuData) {
+                this.trigger('load-kifu', this.pendingKifuData);
+                this.hideKifuDataModal();
+            }
+        });
+
+        click('cancelKifuBtn', () => this.hideKifuDataModal());
     }
 
     updateElementVisibility(element, shouldShow) {
